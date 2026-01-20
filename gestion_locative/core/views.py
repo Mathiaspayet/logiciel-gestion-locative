@@ -12,11 +12,12 @@ from django.db.models import Q
 from django.middleware.csrf import get_token
 from rest_framework import viewsets
 
-from .models import Immeuble, Bail
+from .models import Immeuble, Bail, Local
 from .serializers import ImmeubleSerializer, BailSerializer
 from .pdf_generator import PDFGenerator
 from .calculators import BailCalculator
 from .exceptions import TarificationNotFoundError
+from .patrimoine_calculators import PatrimoineCalculator, RentabiliteCalculator
 
 # Configuration logging
 logger = logging.getLogger(__name__)
@@ -555,3 +556,110 @@ def creer_tarification_from_revision(request, pk):
     except Exception as e:
         logger.exception(f"Erreur création tarification bail {pk}")
         return HttpResponse(f"Erreur: {str(e)}", status=500)
+
+
+# ============================================================================
+# DASHBOARD PATRIMOINE
+# ============================================================================
+
+from django.contrib.admin.views.decorators import staff_member_required
+
+
+@staff_member_required
+def dashboard_patrimoine(request):
+    """
+    Dashboard de synthèse du patrimoine immobilier.
+    Affiche graphiques et indicateurs globaux.
+    Accessible uniquement aux utilisateurs staff.
+    """
+    import json
+    from dateutil.relativedelta import relativedelta
+
+    # Récupérer tous les immeubles
+    immeubles = Immeuble.objects.all().prefetch_related('credits', 'locaux__baux', 'estimations')
+
+    # Calculer données pour chaque immeuble
+    immeubles_data = []
+    total_valeur = 0
+    total_crd = 0
+    total_cashflow = 0
+    total_locaux = 0
+
+    for immeuble in immeubles:
+        valeur = PatrimoineCalculator.get_valeur_actuelle(immeuble)
+        crd = PatrimoineCalculator.get_capital_restant_du(immeuble)
+        cashflow = RentabiliteCalculator.get_cashflow_mensuel(immeuble)
+        rendement = RentabiliteCalculator.get_rendement_brut(immeuble)
+        nb_locaux = immeuble.locaux.count()
+
+        total_valeur += valeur
+        total_crd += crd
+        total_cashflow += cashflow
+        total_locaux += nb_locaux
+
+        immeubles_data.append({
+            'id': immeuble.id,
+            'nom': immeuble.nom,
+            'regime_fiscal_display': immeuble.get_regime_fiscal_display(),
+            'valeur_actuelle': valeur,
+            'capital_restant_du': crd,
+            'valeur_nette': valeur - crd,
+            'rendement_brut': rendement,
+            'cashflow': cashflow,
+        })
+
+    # Totaux
+    totaux = {
+        'valeur_totale': total_valeur,
+        'crd_total': total_crd,
+        'valeur_nette': total_valeur - total_crd,
+        'cashflow_total': total_cashflow,
+        'nb_immeubles': immeubles.count(),
+        'nb_locaux': total_locaux,
+    }
+
+    # Données JSON pour les graphiques
+    immeubles_json = json.dumps(immeubles_data)
+
+    # Projection sur 10 ans
+    today = date.today()
+    projection_labels = []
+    projection_valeurs = []
+    projection_crd = []
+    projection_nette = []
+
+    for i in range(0, 11):
+        annee = today.year + i
+        projection_labels.append(str(annee))
+
+        # Valeur (on garde la même pour simplifier, ou on ajoute une appréciation)
+        valeur_projetee = total_valeur * (1.02 ** i)  # +2% par an
+        projection_valeurs.append(round(valeur_projetee, 0))
+
+        # CRD (décroissant)
+        target_date = date(annee, 12, 31)
+        crd_projete = sum(
+            credit.get_capital_restant_du_at(target_date)
+            for immeuble in immeubles
+            for credit in immeuble.credits.all()
+        )
+        projection_crd.append(round(crd_projete, 0))
+
+        # Valeur nette
+        projection_nette.append(round(valeur_projetee - crd_projete, 0))
+
+    projection_json = json.dumps({
+        'labels': projection_labels,
+        'valeurs': projection_valeurs,
+        'crd': projection_crd,
+        'nette': projection_nette,
+    })
+
+    context = {
+        'immeubles': immeubles_data,
+        'totaux': totaux,
+        'immeubles_json': immeubles_json,
+        'projection_json': projection_json,
+    }
+
+    return render(request, 'admin/core/dashboard_patrimoine.html', context)

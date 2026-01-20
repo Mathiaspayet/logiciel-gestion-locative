@@ -200,3 +200,124 @@ LOGGING = {
         'level': 'INFO',
     },
 }
+
+# =============================================================================
+# JAZZMIN SETTINGS - Personnalisation Admin
+# =============================================================================
+
+JAZZMIN_SETTINGS = {
+    # Titre de la fenêtre
+    "site_title": "Gestion Locative",
+
+    # Titre affiché dans l'admin (header)
+    "site_header": "Gestion Locative & Patrimoine",
+
+    # Titre sur la page de connexion
+    "site_brand": "Gestion Locative",
+
+    # Lien du logo (page d'accueil)
+    "site_logo_classes": "img-circle",
+
+    # Message de bienvenue
+    "welcome_sign": "Bienvenue dans votre espace de gestion",
+
+    # Copyright
+    "copyright": "Gestion Locative",
+
+    # Icônes des modèles (Font Awesome)
+    "icons": {
+        "auth": "fas fa-users-cog",
+        "auth.user": "fas fa-user",
+        "auth.Group": "fas fa-users",
+        "core.Proprietaire": "fas fa-user-tie",
+        "core.Immeuble": "fas fa-building",
+        "core.Local": "fas fa-door-open",
+        "core.Bail": "fas fa-file-contract",
+        "core.BailTarification": "fas fa-tags",
+        "core.Occupant": "fas fa-user-friends",
+        "core.CleRepartition": "fas fa-key",
+        "core.Depense": "fas fa-receipt",
+        "core.Consommation": "fas fa-tachometer-alt",
+        "core.Regularisation": "fas fa-balance-scale",
+        "core.EstimationValeur": "fas fa-chart-line",
+        "core.CreditImmobilier": "fas fa-university",
+        "core.EcheanceCredit": "fas fa-calendar-check",
+        "core.ChargeFiscale": "fas fa-file-invoice-dollar",
+        "core.Amortissement": "fas fa-chart-area",
+        "core.VacanceLocative": "fas fa-calendar-times",
+    },
+
+    # Liens personnalisés dans le menu latéral
+    "custom_links": {
+        "core": [
+            {
+                "name": "Dashboard Patrimoine",
+                "url": "/api/patrimoine/dashboard/",
+                "icon": "fas fa-chart-pie",
+                "permissions": ["auth.view_user"]
+            },
+        ]
+    },
+
+    # Ordre des apps dans le menu
+    "order_with_respect_to": [
+        "auth",
+        "core.Proprietaire",
+        "core.Immeuble",
+        "core.Local",
+        "core.Bail",
+        "core.BailTarification",
+        "core.Occupant",
+        "core.CreditImmobilier",
+        "core.EcheanceCredit",
+        "core.EstimationValeur",
+        "core.ChargeFiscale",
+        "core.Amortissement",
+        "core.VacanceLocative",
+        "core.CleRepartition",
+        "core.Depense",
+        "core.Consommation",
+        "core.Regularisation",
+    ],
+
+    # Afficher l'UI de changement de thème
+    "show_ui_builder": False,
+
+    # Liens en haut à droite (Top Menu)
+    "topmenu_links": [
+        {"name": "Accueil", "url": "admin:index", "permissions": ["auth.view_user"]},
+        {"name": "Dashboard Patrimoine", "url": "/api/patrimoine/dashboard/", "icon": "fas fa-chart-pie"},
+    ],
+}
+
+JAZZMIN_UI_TWEAKS = {
+    "navbar_small_text": False,
+    "footer_small_text": False,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "brand_colour": "navbar-primary",
+    "accent": "accent-primary",
+    "navbar": "navbar-dark",
+    "no_navbar_border": False,
+    "navbar_fixed": True,
+    "layout_boxed": False,
+    "footer_fixed": False,
+    "sidebar_fixed": True,
+    "sidebar": "sidebar-dark-primary",
+    "sidebar_nav_small_text": False,
+    "sidebar_disable_expand": False,
+    "sidebar_nav_child_indent": True,
+    "sidebar_nav_compact_style": False,
+    "sidebar_nav_legacy_style": False,
+    "sidebar_nav_flat_style": False,
+    "theme": "default",
+    "dark_mode_theme": None,
+    "button_classes": {
+        "primary": "btn-primary",
+        "secondary": "btn-secondary",
+        "info": "btn-info",
+        "warning": "btn-warning",
+        "danger": "btn-danger",
+        "success": "btn-success"
+    }
+}

@@ -9,12 +9,20 @@ import zipfile
 from io import BytesIO
 import logging
 
-from .models import Immeuble, Local, Bail, Occupant, Proprietaire, CleRepartition, QuotePart, Depense, Consommation, Ajustement, Regularisation, BailTarification
+from .models import (
+    Immeuble, Local, Bail, Occupant, Proprietaire, CleRepartition, QuotePart,
+    Depense, Consommation, Ajustement, Regularisation, BailTarification,
+    EstimationValeur, CreditImmobilier, EcheanceCredit, ChargeFiscale,
+    Amortissement, VacanceLocative
+)
+from .patrimoine_calculators import (
+    PatrimoineCalculator, RentabiliteCalculator, CreditGenerator
+)
 
 logger = logging.getLogger(__name__)
 
-# Personnalisation de l'interface
-admin.site.site_header = "Gestion Locative"
+# Personnalisation de l'interface (complétée par Jazzmin dans settings.py)
+admin.site.site_header = "Gestion Locative & Patrimoine"
 admin.site.site_title = "Administration Immobilière"
 admin.site.index_title = "Tableau de Bord"
 
@@ -33,6 +41,81 @@ class AjustementInline(admin.TabularInline):
 class QuotePartInline(admin.TabularInline):
     model = QuotePart
     extra = 0
+
+
+# === INLINES PATRIMOINE ===
+
+class EstimationValeurInline(admin.TabularInline):
+    model = EstimationValeur
+    extra = 0
+    fields = ('date_estimation', 'valeur_estimee', 'source', 'notes')
+    ordering = ['-date_estimation']
+
+
+class CreditImmobilierInline(admin.TabularInline):
+    model = CreditImmobilier
+    extra = 0
+    fields = ('nom_banque', 'capital_emprunte', 'taux_interet', 'duree_mois', 'date_debut', 'type_credit', 'get_mensualite', 'get_crd')
+    readonly_fields = ('get_mensualite', 'get_crd')
+    show_change_link = True
+
+    def get_mensualite(self, obj):
+        if obj.pk:
+            return f"{obj.mensualite:.2f} €"
+        return "-"
+    get_mensualite.short_description = "Mensualité"
+
+    def get_crd(self, obj):
+        if obj.pk:
+            return f"{obj.capital_restant_du:.2f} €"
+        return "-"
+    get_crd.short_description = "CRD actuel"
+
+
+class ChargeFiscaleInline(admin.TabularInline):
+    model = ChargeFiscale
+    extra = 0
+    fields = ('annee', 'type_charge', 'montant', 'libelle')
+    ordering = ['-annee', 'type_charge']
+
+
+class EcheanceInline(admin.TabularInline):
+    model = EcheanceCredit
+    extra = 0
+    fields = ('numero_echeance', 'date_echeance', 'capital_rembourse', 'interets', 'assurance', 'capital_restant_du', 'payee')
+    readonly_fields = ('numero_echeance', 'date_echeance', 'capital_rembourse', 'interets', 'assurance', 'capital_restant_du')
+    ordering = ['numero_echeance']
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+class AmortissementInline(admin.TabularInline):
+    model = Amortissement
+    extra = 0
+    fields = ('type_bien', 'libelle', 'valeur_origine', 'date_mise_service', 'duree_amortissement', 'get_dotation')
+    readonly_fields = ('get_dotation',)
+
+    def get_dotation(self, obj):
+        if obj.pk:
+            return f"{obj.dotation_annuelle:.2f} €/an"
+        return "-"
+    get_dotation.short_description = "Dotation annuelle"
+
+
+class VacanceLocativeInline(admin.TabularInline):
+    model = VacanceLocative
+    extra = 0
+    fields = ('date_debut', 'date_fin', 'motif', 'duree_jours')
+    readonly_fields = ('duree_jours',)
+
+    def duree_jours(self, obj):
+        if obj.pk:
+            return f"{obj.duree_jours} jours"
+        return "-"
+    duree_jours.short_description = "Durée"
+
 
 class RegularisationInline(admin.TabularInline):
     model = Regularisation
@@ -84,9 +167,10 @@ class RegularisationAdmin(admin.ModelAdmin):
 
 @admin.register(Local)
 class LocalAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'type_local', 'surface_m2')
-    list_filter = ('immeuble',)
-    inlines = [BailInline]
+    list_display = ('__str__', 'type_local', 'surface_m2', 'immeuble')
+    list_filter = ('immeuble', 'type_local')
+    search_fields = ('numero_porte', 'immeuble__nom')
+    inlines = [BailInline, VacanceLocativeInline]
 
 @admin.register(Bail)
 class BailAdmin(admin.ModelAdmin):
@@ -315,7 +399,65 @@ class ProprietaireAdmin(admin.ModelAdmin):
 
 @admin.register(Immeuble)
 class ImmeubleAdmin(admin.ModelAdmin):
-    list_display = ('nom', 'ville', 'proprietaire')
+    list_display = (
+        'nom', 'ville', 'proprietaire', 'regime_fiscal',
+        'get_valeur_actuelle', 'get_capital_restant_du', 'get_valeur_nette',
+        'get_rendement_brut', 'get_cashflow'
+    )
+    list_filter = ('proprietaire', 'regime_fiscal', 'ville')
+    search_fields = ('nom', 'adresse', 'ville')
+
+    fieldsets = (
+        ('Informations générales', {
+            'fields': ('proprietaire', 'nom', 'adresse', ('ville', 'code_postal'))
+        }),
+        ('Acquisition', {
+            'fields': (
+                ('prix_achat', 'date_achat'),
+                ('frais_notaire', 'frais_agence'),
+            ),
+            'classes': ('collapse',),
+        }),
+        ('Fiscalité', {
+            'fields': ('regime_fiscal',),
+        }),
+    )
+
+    inlines = [EstimationValeurInline, CreditImmobilierInline, ChargeFiscaleInline, AmortissementInline]
+
+    def get_valeur_actuelle(self, obj):
+        valeur = PatrimoineCalculator.get_valeur_actuelle(obj)
+        if valeur:
+            return f"{valeur:,.0f} €".replace(',', ' ')
+        return "-"
+    get_valeur_actuelle.short_description = "Valeur actuelle"
+
+    def get_capital_restant_du(self, obj):
+        crd = PatrimoineCalculator.get_capital_restant_du(obj)
+        if crd > 0:
+            return f"{crd:,.0f} €".replace(',', ' ')
+        return "0 €"
+    get_capital_restant_du.short_description = "CRD"
+
+    def get_valeur_nette(self, obj):
+        valeur_nette = PatrimoineCalculator.get_valeur_nette(obj)
+        color = "#28a745" if valeur_nette >= 0 else "#dc3545"
+        return mark_safe(f'<span style="color: {color}; font-weight: bold;">{valeur_nette:,.0f} €</span>'.replace(',', ' '))
+    get_valeur_nette.short_description = "Valeur nette"
+
+    def get_rendement_brut(self, obj):
+        rendement = RentabiliteCalculator.get_rendement_brut(obj)
+        if rendement is not None:
+            color = "#28a745" if rendement >= 5 else "#ffc107" if rendement >= 3 else "#dc3545"
+            return mark_safe(f'<span style="color: {color}; font-weight: bold;">{rendement:.1f}%</span>')
+        return "-"
+    get_rendement_brut.short_description = "Rdt brut"
+
+    def get_cashflow(self, obj):
+        cashflow = RentabiliteCalculator.get_cashflow_mensuel(obj)
+        color = "#28a745" if cashflow >= 0 else "#dc3545"
+        return mark_safe(f'<span style="color: {color}; font-weight: bold;">{cashflow:,.0f} €/mois</span>'.replace(',', ' '))
+    get_cashflow.short_description = "Cash-flow"
 
 @admin.register(Occupant)
 class OccupantAdmin(admin.ModelAdmin):
@@ -359,3 +501,153 @@ class BailTarificationAdmin(admin.ModelAdmin):
         if obj and "migration automatique" in obj.reason.lower():
             return False
         return super().has_delete_permission(request, obj)
+
+
+# =============================================================================
+# ADMINISTRATION PATRIMOINE
+# =============================================================================
+
+@admin.register(EstimationValeur)
+class EstimationValeurAdmin(admin.ModelAdmin):
+    list_display = ('immeuble', 'date_estimation', 'valeur_estimee', 'source')
+    list_filter = ('immeuble', 'source', 'date_estimation')
+    search_fields = ('immeuble__nom', 'notes')
+    date_hierarchy = 'date_estimation'
+
+
+@admin.register(CreditImmobilier)
+class CreditImmobilierAdmin(admin.ModelAdmin):
+    list_display = (
+        'nom_banque', 'immeuble', 'capital_emprunte', 'taux_interet',
+        'duree_mois', 'date_debut', 'get_mensualite', 'get_crd', 'get_date_fin'
+    )
+    list_filter = ('immeuble', 'type_credit', 'nom_banque')
+    search_fields = ('nom_banque', 'numero_pret', 'immeuble__nom')
+    date_hierarchy = 'date_debut'
+
+    fieldsets = (
+        ('Informations du prêt', {
+            'fields': ('immeuble', 'nom_banque', 'numero_pret')
+        }),
+        ('Conditions', {
+            'fields': (
+                ('capital_emprunte', 'taux_interet'),
+                ('duree_mois', 'date_debut'),
+                'type_credit',
+                'assurance_mensuelle',
+            )
+        }),
+    )
+
+    inlines = [EcheanceInline]
+    actions = ['generer_echeancier']
+
+    def get_mensualite(self, obj):
+        return f"{obj.mensualite:.2f} €"
+    get_mensualite.short_description = "Mensualité"
+
+    def get_crd(self, obj):
+        crd = obj.capital_restant_du
+        pourcentage = (crd / float(obj.capital_emprunte)) * 100 if obj.capital_emprunte else 0
+        return f"{crd:,.0f} € ({pourcentage:.0f}%)".replace(',', ' ')
+    get_crd.short_description = "Capital restant dû"
+
+    def get_date_fin(self, obj):
+        return obj.date_fin.strftime('%d/%m/%Y')
+    get_date_fin.short_description = "Date fin"
+
+    @admin.action(description='📅 Générer/Régénérer échéancier')
+    def generer_echeancier(self, request, queryset):
+        total = 0
+        for credit in queryset:
+            generator = CreditGenerator(credit)
+            nb_echeances = generator.creer_echeances_en_base()
+            total += nb_echeances
+            logger.info(f"Échéancier généré pour {credit}: {nb_echeances} échéances")
+
+        self.message_user(
+            request,
+            f'✓ {total} échéances générées pour {queryset.count()} crédit(s).',
+            level='success'
+        )
+
+
+@admin.register(EcheanceCredit)
+class EcheanceCreditAdmin(admin.ModelAdmin):
+    list_display = (
+        'credit', 'numero_echeance', 'date_echeance',
+        'capital_rembourse', 'interets', 'assurance',
+        'capital_restant_du', 'payee'
+    )
+    list_filter = ('credit__immeuble', 'credit', 'payee', 'date_echeance')
+    readonly_fields = (
+        'credit', 'numero_echeance', 'date_echeance',
+        'capital_rembourse', 'interets', 'assurance', 'capital_restant_du'
+    )
+    date_hierarchy = 'date_echeance'
+
+    actions = ['marquer_payee']
+
+    @admin.action(description='✓ Marquer comme payée')
+    def marquer_payee(self, request, queryset):
+        from django.utils import timezone
+        updated = queryset.update(payee=True, date_paiement=timezone.now().date())
+        self.message_user(request, f'{updated} échéance(s) marquée(s) comme payée(s).')
+
+
+@admin.register(ChargeFiscale)
+class ChargeFiscaleAdmin(admin.ModelAdmin):
+    list_display = ('immeuble', 'annee', 'type_charge', 'montant', 'libelle')
+    list_filter = ('immeuble', 'annee', 'type_charge')
+    search_fields = ('libelle', 'immeuble__nom')
+    ordering = ['-annee', 'immeuble', 'type_charge']
+
+    fieldsets = (
+        (None, {
+            'fields': ('immeuble', 'annee', 'type_charge', 'montant', 'libelle')
+        }),
+        ('Justificatif', {
+            'fields': ('justificatif',),
+            'classes': ('collapse',),
+        }),
+    )
+
+
+@admin.register(Amortissement)
+class AmortissementAdmin(admin.ModelAdmin):
+    list_display = (
+        'immeuble', 'type_bien', 'libelle', 'valeur_origine',
+        'date_mise_service', 'duree_amortissement', 'get_dotation', 'get_date_fin'
+    )
+    list_filter = ('immeuble', 'type_bien')
+    search_fields = ('libelle', 'immeuble__nom')
+
+    def get_dotation(self, obj):
+        return f"{obj.dotation_annuelle:,.2f} €/an".replace(',', ' ')
+    get_dotation.short_description = "Dotation annuelle"
+
+    def get_date_fin(self, obj):
+        return obj.date_fin_amortissement.strftime('%d/%m/%Y')
+    get_date_fin.short_description = "Fin amortissement"
+
+
+@admin.register(VacanceLocative)
+class VacanceLocativeAdmin(admin.ModelAdmin):
+    list_display = ('local', 'date_debut', 'date_fin', 'motif', 'get_duree', 'get_statut')
+    list_filter = ('local__immeuble', 'motif', 'date_debut')
+    search_fields = ('local__numero_porte', 'local__immeuble__nom')
+    date_hierarchy = 'date_debut'
+
+    def get_duree(self, obj):
+        return f"{obj.duree_jours} jours"
+    get_duree.short_description = "Durée"
+
+    def get_statut(self, obj):
+        if obj.date_fin is None:
+            return mark_safe(
+                '<span style="background-color: #dc3545; color: white; padding: 3px 8px; border-radius: 3px;">● En cours</span>'
+            )
+        return mark_safe(
+            '<span style="background-color: #28a745; color: white; padding: 3px 8px; border-radius: 3px;">○ Terminée</span>'
+        )
+    get_statut.short_description = "Statut"

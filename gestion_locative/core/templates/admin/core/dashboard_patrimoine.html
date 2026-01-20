@@ -1,0 +1,371 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Dashboard Patrimoine{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+    .dashboard-container {
+        padding: 20px;
+    }
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .stat-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .stat-card h3 {
+        margin: 0 0 10px 0;
+        color: #666;
+        font-size: 14px;
+        text-transform: uppercase;
+    }
+    .stat-card .value {
+        font-size: 28px;
+        font-weight: bold;
+        color: #333;
+    }
+    .stat-card .value.positive { color: #28a745; }
+    .stat-card .value.negative { color: #dc3545; }
+    .stat-card .value.neutral { color: #17a2b8; }
+
+    .charts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .chart-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .chart-card h3 {
+        margin: 0 0 15px 0;
+        color: #333;
+        font-size: 16px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 10px;
+    }
+    .chart-container {
+        position: relative;
+        height: 300px;
+    }
+
+    .table-section {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    .table-section h3 {
+        margin: 0 0 15px 0;
+        color: #333;
+        font-size: 16px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 10px;
+    }
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .data-table th, .data-table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+    }
+    .data-table th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #333;
+    }
+    .data-table tr:hover {
+        background: #f8f9fa;
+    }
+    .badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .badge-success { background: #d4edda; color: #155724; }
+    .badge-warning { background: #fff3cd; color: #856404; }
+    .badge-danger { background: #f8d7da; color: #721c24; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <h1>Dashboard Patrimoine Immobilier</h1>
+
+    <!-- Cartes statistiques globales -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>Valeur totale du patrimoine</h3>
+            <div class="value neutral">{{ totaux.valeur_totale|floatformat:0 }} €</div>
+        </div>
+        <div class="stat-card">
+            <h3>Capital restant dû</h3>
+            <div class="value negative">{{ totaux.crd_total|floatformat:0 }} €</div>
+        </div>
+        <div class="stat-card">
+            <h3>Valeur nette</h3>
+            <div class="value {% if totaux.valeur_nette >= 0 %}positive{% else %}negative{% endif %}">
+                {{ totaux.valeur_nette|floatformat:0 }} €
+            </div>
+        </div>
+        <div class="stat-card">
+            <h3>Cash-flow mensuel total</h3>
+            <div class="value {% if totaux.cashflow_total >= 0 %}positive{% else %}negative{% endif %}">
+                {{ totaux.cashflow_total|floatformat:0 }} €/mois
+            </div>
+        </div>
+        <div class="stat-card">
+            <h3>Nombre d'immeubles</h3>
+            <div class="value neutral">{{ totaux.nb_immeubles }}</div>
+        </div>
+        <div class="stat-card">
+            <h3>Nombre de locaux</h3>
+            <div class="value neutral">{{ totaux.nb_locaux }}</div>
+        </div>
+    </div>
+
+    <!-- Graphiques -->
+    <div class="charts-grid">
+        <!-- Répartition par immeuble (Camembert) -->
+        <div class="chart-card">
+            <h3>Répartition du patrimoine par immeuble</h3>
+            <div class="chart-container">
+                <canvas id="chartRepartition"></canvas>
+            </div>
+        </div>
+
+        <!-- Cash-flow par immeuble (Barres) -->
+        <div class="chart-card">
+            <h3>Cash-flow mensuel par immeuble</h3>
+            <div class="chart-container">
+                <canvas id="chartCashflow"></canvas>
+            </div>
+        </div>
+
+        <!-- Valeur vs CRD (Barres empilées) -->
+        <div class="chart-card">
+            <h3>Valeur brute vs Capital restant dû</h3>
+            <div class="chart-container">
+                <canvas id="chartValeurCRD"></canvas>
+            </div>
+        </div>
+
+        <!-- Évolution patrimoine (Courbe) -->
+        <div class="chart-card">
+            <h3>Évolution de la valeur nette (projection)</h3>
+            <div class="chart-container">
+                <canvas id="chartEvolution"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tableau récapitulatif -->
+    <div class="table-section">
+        <h3>Détail par immeuble</h3>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Immeuble</th>
+                    <th>Régime fiscal</th>
+                    <th>Valeur actuelle</th>
+                    <th>Capital restant dû</th>
+                    <th>Valeur nette</th>
+                    <th>Rendement brut</th>
+                    <th>Cash-flow</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for immeuble in immeubles %}
+                <tr>
+                    <td><a href="{% url 'admin:core_immeuble_change' immeuble.id %}">{{ immeuble.nom }}</a></td>
+                    <td>{{ immeuble.regime_fiscal_display }}</td>
+                    <td>{{ immeuble.valeur_actuelle|floatformat:0 }} €</td>
+                    <td>{{ immeuble.capital_restant_du|floatformat:0 }} €</td>
+                    <td class="{% if immeuble.valeur_nette >= 0 %}positive{% else %}negative{% endif %}">
+                        {{ immeuble.valeur_nette|floatformat:0 }} €
+                    </td>
+                    <td>
+                        {% if immeuble.rendement_brut %}
+                            <span class="badge {% if immeuble.rendement_brut >= 5 %}badge-success{% elif immeuble.rendement_brut >= 3 %}badge-warning{% else %}badge-danger{% endif %}">
+                                {{ immeuble.rendement_brut|floatformat:1 }}%
+                            </span>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td class="{% if immeuble.cashflow >= 0 %}positive{% else %}negative{% endif %}">
+                        {{ immeuble.cashflow|floatformat:0 }} €/mois
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" style="text-align: center; color: #666;">Aucun immeuble enregistré</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Données injectées depuis Django
+    const immeubles = {{ immeubles_json|safe }};
+    const projectionData = {{ projection_json|safe }};
+
+    // Palette de couleurs
+    const colors = [
+        '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
+        '#858796', '#5a5c69', '#2e59d9', '#17a673', '#2c9faf'
+    ];
+
+    // 1. Graphique Répartition (Camembert)
+    new Chart(document.getElementById('chartRepartition'), {
+        type: 'doughnut',
+        data: {
+            labels: immeubles.map(i => i.nom),
+            datasets: [{
+                data: immeubles.map(i => i.valeur_actuelle),
+                backgroundColor: colors,
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                }
+            }
+        }
+    });
+
+    // 2. Graphique Cash-flow (Barres)
+    new Chart(document.getElementById('chartCashflow'), {
+        type: 'bar',
+        data: {
+            labels: immeubles.map(i => i.nom),
+            datasets: [{
+                label: 'Cash-flow mensuel (€)',
+                data: immeubles.map(i => i.cashflow),
+                backgroundColor: immeubles.map(i => i.cashflow >= 0 ? '#1cc88a' : '#e74a3b'),
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: '#eee' }
+                }
+            }
+        }
+    });
+
+    // 3. Graphique Valeur vs CRD (Barres groupées)
+    new Chart(document.getElementById('chartValeurCRD'), {
+        type: 'bar',
+        data: {
+            labels: immeubles.map(i => i.nom),
+            datasets: [
+                {
+                    label: 'Valeur actuelle',
+                    data: immeubles.map(i => i.valeur_actuelle),
+                    backgroundColor: '#4e73df',
+                    borderRadius: 4
+                },
+                {
+                    label: 'Capital restant dû',
+                    data: immeubles.map(i => i.capital_restant_du),
+                    backgroundColor: '#e74a3b',
+                    borderRadius: 4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: '#eee' }
+                }
+            }
+        }
+    });
+
+    // 4. Graphique Évolution (Courbe)
+    new Chart(document.getElementById('chartEvolution'), {
+        type: 'line',
+        data: {
+            labels: projectionData.labels,
+            datasets: [
+                {
+                    label: 'Valeur patrimoine',
+                    data: projectionData.valeurs,
+                    borderColor: '#4e73df',
+                    backgroundColor: 'rgba(78, 115, 223, 0.1)',
+                    fill: true,
+                    tension: 0.3
+                },
+                {
+                    label: 'Capital restant dû',
+                    data: projectionData.crd,
+                    borderColor: '#e74a3b',
+                    backgroundColor: 'rgba(231, 74, 59, 0.1)',
+                    fill: true,
+                    tension: 0.3
+                },
+                {
+                    label: 'Valeur nette',
+                    data: projectionData.nette,
+                    borderColor: '#1cc88a',
+                    backgroundColor: 'rgba(28, 200, 138, 0.1)',
+                    fill: true,
+                    tension: 0.3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: '#eee' }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}
