@@ -1,0 +1,79 @@
+{% extends "pdf_forms/base_form.html" %}
+
+{% block title %}Révision du Loyer{% endblock %}
+
+{% block header_title %}Révision du Loyer ({{ nom_indice }}){% endblock %}
+{% block header_subtitle %}{{ bail.local.numero_porte }} - {{ bail.local.immeuble.nom }}{% endblock %}
+
+{% block info_boxes %}
+<div class="info-box">
+    <strong>💰 Loyer Actuel</strong>
+    <p><strong>Loyer HC :</strong> {{ loyer_actuel }}</p>
+    <p><strong>Indice de référence :</strong> {{ indice_actuel|default:"Non défini" }} ({{ trimestre_actuel|default:"?" }})</p>
+</div>
+{% endblock %}
+
+{% block form_content %}
+<div class="form-group">
+    <label>Choisir l'indice {{ nom_indice }} à appliquer :</label>
+    <div style="background: #fff; border: 1px solid #ccc; padding: 15px; border-radius: 6px; max-height: 300px; overflow-y: auto;">
+        {% if indices_dispos %}
+            {% for indice in indices_dispos %}
+            <div class="checkbox-group" style="margin-bottom: 8px;">
+                <input type="radio" name="choix_indice" id="idx_{{ forloop.counter0 }}"
+                       value="{{ indice.valeur }}|{{ indice.trimestre }}"
+                       {% if forloop.first %}checked{% endif %}>
+                <label for="idx_{{ forloop.counter0 }}" style="font-weight: normal;">
+                    {{ indice.trimestre }} : <strong>{{ indice.valeur }}</strong>
+                </label>
+            </div>
+            {% endfor %}
+
+            <div style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
+                <div class="checkbox-group">
+                    <input type="radio" name="choix_indice" id="idx_manual" value="MANUEL">
+                    <label for="idx_manual" style="font-weight: bold;">
+                        Autre (Saisir manuellement ci-dessous)
+                    </label>
+                </div>
+            </div>
+        {% else %}
+            <p style="color: #d9534f; padding: 10px; background: #f8d7da; border-radius: 4px;">
+                ⚠️ Impossible de récupérer les indices INSEE. Veuillez saisir manuellement.
+            </p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid" style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 6px;">
+    <div class="form-group">
+        <label>Saisie Manuelle (si "Autre" coché) :</label>
+        <input type="number" step="0.01" name="nouvel_indice_manuel" placeholder="Valeur (ex: 144.50)">
+    </div>
+
+    <div class="form-group">
+        <label>Trimestre :</label>
+        <input type="text" name="nouveau_trimestre_manuel" placeholder="ex: T1 2024">
+    </div>
+</div>
+
+<div class="form-group" style="margin-top: 20px;">
+    <label>Date d'application :</label>
+    <input type="date" name="date_application" value="{{ date_today }}" required>
+    <small>Date à partir de laquelle le nouveau loyer s'appliquera</small>
+</div>
+
+<div class="warning" style="margin-top: 20px;">
+    <label style="display: flex; align-items: center; cursor: pointer;">
+        <input type="checkbox" name="update_bail" id="update_bail" style="width: auto; margin-right: 10px;">
+        <div>
+            <strong>Mettre à jour le loyer dans le logiciel ?</strong>
+            <small style="display: block; margin-top: 5px;">
+                Si coché, vous serez redirigé vers un formulaire pour créer une nouvelle tarification avec le nouveau montant.
+            </small>
+        </div>
+    </label>
+</div>
+{% endblock %}
+
+{% block submit_button %}📈 Calculer et Générer le Courrier{% endblock %}

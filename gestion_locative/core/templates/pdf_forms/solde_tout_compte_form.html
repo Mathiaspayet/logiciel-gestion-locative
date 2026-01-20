@@ -1,0 +1,62 @@
+{% extends "pdf_forms/base_form.html" %}
+
+{% block title %}Solde de Tout Compte{% endblock %}
+
+{% block header_title %}Arrêté de Compte (Fin de Bail){% endblock %}
+{% block header_subtitle %}{{ bail.local.numero_porte }} - {{ bail.local.immeuble.nom }}{% endblock %}
+
+{% block extra_style %}
+button {
+    background: #d9534f !important;
+}
+button:hover {
+    background: #c9302c !important;
+}
+{% endblock %}
+
+{% block info_boxes %}
+<div class="warning">
+    <strong>⚠️ Fin de Bail</strong>
+    <p><strong>Locataire :</strong> {{ locataire }}</p>
+    <p><strong>Dépôt de garantie initial :</strong> {{ depot_garantie }}</p>
+</div>
+{% endblock %}
+
+{% block form_content %}
+<div class="form-group">
+    <label>Date de sortie (Fin de bail) :</label>
+    <input type="date" name="date_sortie" required value="{{ default_date }}">
+    <small>Date à laquelle le locataire quitte définitivement les lieux</small>
+</div>
+
+<div class="form-group">
+    <label>Statut du dernier loyer :</label>
+    <select name="statut_loyer" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 6px;">
+        <option value="NON_PAYE">Le locataire n'a PAS payé la dernière période (À déduire)</option>
+        <option value="PAYE_TOTAL">Le locataire a payé la période complète (Prorata à rembourser)</option>
+    </select>
+    <small>Indiquez si le locataire a déjà payé son loyer pour la période en cours</small>
+</div>
+
+<div class="form-group">
+    <label>Retenues sur Dépôt de Garantie (État des lieux) :</label>
+    <input type="number" step="0.01" name="montant_retenues" value="0.00">
+    <small>Montant total des retenues pour dégradations constatées</small>
+</div>
+
+<div class="form-group">
+    <label>Description des retenues / Dégradations :</label>
+    <textarea name="desc_retenues" rows="4" placeholder="Ex: Nettoyage moquette salon (50€), Remplacement clé (25€), Réparation porte placard (80€)..." style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 6px; resize: vertical;"></textarea>
+    <small>Détaillez les retenues pour justification (optionnel)</small>
+</div>
+
+<div class="info-box" style="background: #fff3cd; border-left-color: #ffc107; margin-top: 20px;">
+    <strong>💡 Information</strong>
+    <p style="margin-top: 5px;">Le solde final sera calculé automatiquement en tenant compte :
+        <br>• Du dépôt de garantie versé initialement
+        <br>• Du prorata de loyer (selon le statut choisi)
+        <br>• Des retenues pour dégradations</p>
+</div>
+{% endblock %}
+
+{% block submit_button %}📄 Générer le Solde de Tout Compte{% endblock %}

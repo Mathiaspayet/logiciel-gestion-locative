@@ -1,0 +1,44 @@
+{% extends "pdf_forms/base_form.html" %}
+
+{% block title %}Quittance de Loyer{% endblock %}
+
+{% block header_title %}Quittance de Loyer{% endblock %}
+{% block header_subtitle %}{{ bail.local.numero_porte }} - {{ bail.local.immeuble.nom }}{% endblock %}
+
+{% block info_boxes %}
+<div class="info-box">
+    <strong>📋 Informations du Bail</strong>
+    <p><strong>Locataire :</strong> {{ locataire }}</p>
+    <p><strong>Local :</strong> {{ bail.local.numero_porte }}</p>
+    <p><strong>Loyer actuel :</strong> {{ loyer_hc }} € HC + {{ charges }} € charges = {{ total }} € TTC</p>
+    <p><strong>Fréquence :</strong> {{ frequence }}</p>
+</div>
+{% endblock %}
+
+{% block form_content %}
+<div class="form-group">
+    <label>Sélectionnez les périodes à inclure dans la quittance :</label>
+    <small>Maintenez Ctrl (Windows) ou Cmd (Mac) pour sélectionner plusieurs périodes</small>
+
+    <div style="margin-top: 12px; max-height: 300px; overflow-y: auto; border: 2px solid #e9ecef; border-radius: 6px; padding: 8px;">
+        {% for periode in periodes_disponibles %}
+        <div class="checkbox-group">
+            <input type="checkbox" name="periodes" value="{{ periode.value }}" id="periode_{{ forloop.counter }}">
+            <label for="periode_{{ forloop.counter }}">{{ periode.label }}</label>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    // Auto-check la période actuelle
+    document.addEventListener('DOMContentLoaded', function() {
+        const checkboxes = document.querySelectorAll('input[name="periodes"]');
+        if (checkboxes.length > 0) {
+            checkboxes[checkboxes.length - 1].checked = true;
+        }
+    });
+</script>
+{% endblock %}
+
+{% block submit_button %}📄 Générer la Quittance{% endblock %}

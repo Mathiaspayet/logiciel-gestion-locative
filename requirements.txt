@@ -1,0 +1,4 @@
+django
+djangorestframework
+reportlab
+django-jazzmin

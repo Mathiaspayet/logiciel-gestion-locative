@@ -1,0 +1,18 @@
+# Python & Django
+__pycache__/
+*.py[cod]
+*.log
+
+# Base de données (IMPORTANT : ne pas publier vos données locataires !)
+db.sqlite3
+db.sqlite3-journal
+
+# Dossiers de médias (Factures uploadées, etc.)
+media/
+
+# Environnement virtuel & IDE
+venv/
+env/
+.vscode/
+.idea/
+.DS_Storenul

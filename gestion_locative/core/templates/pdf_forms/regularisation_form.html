@@ -1,0 +1,51 @@
+{% extends "pdf_forms/base_form.html" %}
+
+{% block title %}Régularisation de Charges{% endblock %}
+
+{% block header_title %}Régularisation de Charges{% endblock %}
+{% block header_subtitle %}{{ bail.local.numero_porte }} - {{ bail.local.immeuble.nom }}{% endblock %}
+
+{% block info_boxes %}
+<div class="info-box">
+    <strong>📋 Informations du Bail</strong>
+    <p><strong>Locataire :</strong> {{ locataire }}</p>
+    <p><strong>Local :</strong> {{ bail.local.numero_porte }}</p>
+</div>
+{% endblock %}
+
+{% block form_content %}
+<div class="grid">
+    <div class="form-group">
+        <label>Date de début :</label>
+        <input type="date" name="date_debut" required value="{{ default_start }}">
+        <small>Premier jour de la période de régularisation</small>
+    </div>
+
+    <div class="form-group">
+        <label>Date de fin :</label>
+        <input type="date" name="date_fin" required value="{{ default_end }}">
+        <small>Dernier jour de la période de régularisation</small>
+    </div>
+</div>
+
+<div class="form-group">
+    <div style="background: #f9f9f9; border-radius: 6px; padding: 15px; margin-top: 15px;">
+        <label style="display: flex; align-items: center; margin: 0; cursor: pointer;">
+            <input type="checkbox" name="enregistrer_historique" checked style="width: auto; margin-right: 10px; transform: scale(1.2); cursor: pointer;">
+            <div>
+                <strong>Enregistrer dans l'historique</strong>
+                <small style="display: block; margin-top: 5px; color: #666;">
+                    Décochez pour générer un brouillon sans sauvegarder dans la base de données
+                </small>
+            </div>
+        </label>
+    </div>
+</div>
+
+<div class="warning" style="margin-top: 20px;">
+    <strong>⚠️ Avant de générer :</strong>
+    <p style="margin-top: 5px;">Assurez-vous que toutes les dépenses et consommations de la période ont été saisies dans le système pour obtenir un calcul exact.</p>
+</div>
+{% endblock %}
+
+{% block submit_button %}📊 Générer la Régularisation{% endblock %}
