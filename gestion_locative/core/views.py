@@ -647,3 +647,74 @@ def dashboard_patrimoine(request):
     }
 
     return render(request, 'admin/core/dashboard_patrimoine.html', context)
+
+
+# ============================================================================
+# ASSISTANT CRÉDIT IMMOBILIER
+# ============================================================================
+
+from django.contrib.admin.views.decorators import staff_member_required
+
+
+@staff_member_required
+def assistant_credit(request, immeuble_id=None):
+    """
+    Assistant intelligent pour créer un crédit immobilier.
+    Permet de calculer automatiquement les valeurs manquantes.
+    """
+    from .models import CreditImmobilier
+    from decimal import Decimal
+
+    # Récupérer tous les immeubles pour le formulaire
+    immeubles = Immeuble.objects.all()
+
+    if request.method == 'POST':
+        try:
+            # Récupérer les données du formulaire
+            immeuble_id = request.POST.get('immeuble')
+            nom_banque = request.POST.get('nom_banque')
+            numero_pret = request.POST.get('numero_pret', '')
+            date_debut = request.POST.get('date_debut')
+            type_credit = request.POST.get('type_credit')
+            assurance_mensuelle = Decimal(request.POST.get('assurance_mensuelle', 0))
+
+            # Récupérer les valeurs calculées selon le mode
+            capital_emprunte = Decimal(request.POST.get('capital_emprunte'))
+            taux_interet = Decimal(request.POST.get('taux_interet'))
+            duree_mois = int(request.POST.get('duree_mois'))
+
+            # Créer le crédit
+            immeuble = Immeuble.objects.get(pk=immeuble_id)
+            credit = CreditImmobilier.objects.create(
+                immeuble=immeuble,
+                nom_banque=nom_banque,
+                numero_pret=numero_pret,
+                capital_emprunte=capital_emprunte,
+                taux_interet=taux_interet,
+                duree_mois=duree_mois,
+                date_debut=datetime.strptime(date_debut, '%Y-%m-%d').date(),
+                type_credit=type_credit,
+                assurance_mensuelle=assurance_mensuelle
+            )
+
+            logger.info(f"Crédit créé via assistant: {credit}")
+
+            # Rediriger vers l'admin du crédit
+            from django.urls import reverse
+            url = reverse('admin:core_creditimmobilier_change', args=[credit.pk])
+            return redirect(url)
+
+        except Exception as e:
+            logger.exception("Erreur lors de la création du crédit")
+            return HttpResponse(f"Erreur: {str(e)}", status=500)
+
+    # GET : Afficher le formulaire
+    context = {
+        'immeubles': immeubles,
+    }
+
+    # Si un immeuble_id est fourni, le présélectionner
+    if immeuble_id:
+        context['immeuble_id'] = immeuble_id
+
+    return render(request, 'credit_forms/assistant_credit.html', context)

@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assistant Crédit Immobilier</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .mode-selector {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .mode-card {
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .mode-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .mode-card.active {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .mode-card .icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .mode-card .title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .mode-card .desc {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .form-section {
+            display: none;
+            animation: fadeIn 0.3s;
+        }
+
+        .form-section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+            font-size: 14px;
+        }
+
+        input, select {
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input[readonly] {
+            background: #f8f9fa;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .result-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin: 25px 0;
+        }
+
+        .result-box h3 {
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+
+        .result-item {
+            background: rgba(255,255,255,0.2);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .result-item .label {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .result-item .value {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .btn {
+            padding: 14px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+            margin-left: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 30px;
+        }
+
+        .info-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .info-box p {
+            color: #555;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏦 Assistant Crédit Immobilier</h1>
+            <p>Renseignez les données que vous connaissez, le reste sera calculé automatiquement</p>
+        </header>
+
+        <div class="content">
+            <div class="info-box">
+                <p><strong>💡 Comment ça marche ?</strong> Choisissez ce que vous connaissez, entrez les valeurs, et le formulaire calcule automatiquement les données manquantes.</p>
+            </div>
+
+            <!-- Sélecteur de mode -->
+            <div class="mode-selector">
+                <div class="mode-card active" data-mode="mode1">
+                    <div class="icon">💰</div>
+                    <div class="title">Capital connu</div>
+                    <div class="desc">Je connais le capital emprunté</div>
+                </div>
+                <div class="mode-card" data-mode="mode2">
+                    <div class="icon">📊</div>
+                    <div class="title">Mensualité connue</div>
+                    <div class="desc">Je connais ma mensualité</div>
+                </div>
+                <div class="mode-card" data-mode="mode3">
+                    <div class="icon">🧮</div>
+                    <div class="title">Données partielles</div>
+                    <div class="desc">Je connais capital et mensualité</div>
+                </div>
+            </div>
+
+            <form id="creditForm" method="POST" action="">
+                {% csrf_token %}
+                <input type="hidden" name="mode" id="mode" value="mode1">
+
+                <!-- Champs communs -->
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="immeuble">Immeuble *</label>
+                        <select id="immeuble" name="immeuble" required>
+                            <option value="">-- Sélectionner --</option>
+                            {% for immeuble in immeubles %}
+                            <option value="{{ immeuble.id }}">{{ immeuble.nom }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nom_banque">Banque *</label>
+                        <input type="text" id="nom_banque" name="nom_banque" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="numero_pret">Numéro de prêt</label>
+                        <input type="text" id="numero_pret" name="numero_pret">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="date_debut">Date de début *</label>
+                        <input type="date" id="date_debut" name="date_debut" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="type_credit">Type de crédit *</label>
+                        <select id="type_credit" name="type_credit" required>
+                            <option value="AMORTISSABLE">Amortissable</option>
+                            <option value="IN_FINE">In Fine</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="assurance_mensuelle">Assurance mensuelle (€)</label>
+                        <input type="number" id="assurance_mensuelle" name="assurance_mensuelle" step="0.01" value="0">
+                    </div>
+                </div>
+
+                <!-- Mode 1: Capital connu -->
+                <div id="form-mode1" class="form-section active">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="capital_mode1">Capital emprunté (€) *</label>
+                            <input type="number" id="capital_mode1" name="capital_emprunte" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="taux_mode1">Taux d'intérêt (%) *</label>
+                            <input type="number" id="taux_mode1" name="taux_interet" step="0.001" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="duree_mode1">Durée (mois) *</label>
+                            <input type="number" id="duree_mode1" name="duree_mois" required>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mode 2: Mensualité connue -->
+                <div id="form-mode2" class="form-section">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="mensualite_mode2">Mensualité hors assurance (€) *</label>
+                            <input type="number" id="mensualite_mode2" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="taux_mode2">Taux d'intérêt (%) *</label>
+                            <input type="number" id="taux_mode2" step="0.001" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="duree_mode2">Durée (mois) *</label>
+                            <input type="number" id="duree_mode2" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Capital emprunté</label>
+                            <input type="number" id="capital_mode2_calc" step="0.01" readonly>
+                            <input type="hidden" name="capital_emprunte" id="capital_mode2">
+                            <input type="hidden" name="taux_interet" id="taux_mode2_hidden">
+                            <input type="hidden" name="duree_mois" id="duree_mode2_hidden">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mode 3: Capital et mensualité connus -->
+                <div id="form-mode3" class="form-section">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="capital_mode3">Capital emprunté (€) *</label>
+                            <input type="number" id="capital_mode3" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="mensualite_mode3">Mensualité hors assurance (€) *</label>
+                            <input type="number" id="mensualite_mode3" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="duree_mode3">Durée (mois) *</label>
+                            <input type="number" id="duree_mode3" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Taux d'intérêt (%)</label>
+                            <input type="number" id="taux_mode3_calc" step="0.001" readonly>
+                            <input type="hidden" name="capital_emprunte" id="capital_mode3_hidden">
+                            <input type="hidden" name="taux_interet" id="taux_mode3">
+                            <input type="hidden" name="duree_mois" id="duree_mode3_hidden">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Résultats -->
+                <div class="result-box" id="resultsBox" style="display: none;">
+                    <h3>📊 Résultats calculés</h3>
+                    <div class="result-grid">
+                        <div class="result-item">
+                            <div class="label">Capital emprunté</div>
+                            <div class="value" id="result-capital">-</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="label">Taux d'intérêt</div>
+                            <div class="value" id="result-taux">-</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="label">Mensualité</div>
+                            <div class="value" id="result-mensualite">-</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="label">Coût total</div>
+                            <div class="value" id="result-cout">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button type="button" class="btn btn-secondary" onclick="window.history.back()">Annuler</button>
+                    <button type="submit" class="btn btn-primary" id="submitBtn">💾 Enregistrer le crédit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Gestion des modes
+        const modeCards = document.querySelectorAll('.mode-card');
+        const formSections = document.querySelectorAll('.form-section');
+        const modeInput = document.getElementById('mode');
+        let currentMode = 'mode1';
+
+        modeCards.forEach(card => {
+            card.addEventListener('click', () => {
+                const mode = card.dataset.mode;
+                currentMode = mode;
+                modeInput.value = mode;
+
+                // Update UI
+                modeCards.forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+
+                formSections.forEach(section => section.classList.remove('active'));
+                document.getElementById(`form-${mode}`).classList.add('active');
+
+                // Recalculer
+                calculateValues();
+            });
+        });
+
+        // Calculer la mensualité à partir de capital, taux, durée
+        function calculateMensualite(capital, taux, duree, typeCredit) {
+            if (!capital || !duree || taux === null || taux === undefined) return null;
+
+            const tauxMensuel = taux / 100 / 12;
+
+            if (typeCredit === 'IN_FINE') {
+                return capital * tauxMensuel;
+            }
+
+            if (tauxMensuel === 0) {
+                return capital / duree;
+            }
+
+            return capital * (tauxMensuel * Math.pow(1 + tauxMensuel, duree)) / (Math.pow(1 + tauxMensuel, duree) - 1);
+        }
+
+        // Calculer le capital à partir de mensualité, taux, durée
+        function calculateCapital(mensualite, taux, duree, typeCredit) {
+            if (!mensualite || !duree || taux === null || taux === undefined) return null;
+
+            const tauxMensuel = taux / 100 / 12;
+
+            if (typeCredit === 'IN_FINE') {
+                return mensualite / tauxMensuel;
+            }
+
+            if (tauxMensuel === 0) {
+                return mensualite * duree;
+            }
+
+            return mensualite * (Math.pow(1 + tauxMensuel, duree) - 1) / (tauxMensuel * Math.pow(1 + tauxMensuel, duree));
+        }
+
+        // Calculer le taux à partir de capital, mensualité, durée (Newton-Raphson)
+        function calculateTaux(capital, mensualite, duree, typeCredit) {
+            if (!capital || !mensualite || !duree) return null;
+
+            if (typeCredit === 'IN_FINE') {
+                return (mensualite / capital) * 12 * 100;
+            }
+
+            // Méthode de Newton-Raphson
+            let taux = 0.05; // Estimation initiale 5%
+            const tolerance = 0.0001;
+            const maxIterations = 100;
+
+            for (let i = 0; i < maxIterations; i++) {
+                const tauxMensuel = taux / 12;
+                const mensualiteCalculee = capital * (tauxMensuel * Math.pow(1 + tauxMensuel, duree)) / (Math.pow(1 + tauxMensuel, duree) - 1);
+
+                if (Math.abs(mensualiteCalculee - mensualite) < tolerance) {
+                    return taux * 100;
+                }
+
+                // Dérivée
+                const epsilon = 0.0001;
+                const mensualitePlus = capital * ((tauxMensuel + epsilon) * Math.pow(1 + tauxMensuel + epsilon, duree)) / (Math.pow(1 + tauxMensuel + epsilon, duree) - 1);
+                const derivee = (mensualitePlus - mensualiteCalculee) / epsilon;
+
+                taux = taux - (mensualiteCalculee - mensualite) / derivee;
+
+                if (taux < 0) taux = 0.001;
+            }
+
+            return taux * 100;
+        }
+
+        // Fonction principale de calcul
+        function calculateValues() {
+            const typeCredit = document.getElementById('type_credit').value;
+            const resultsBox = document.getElementById('resultsBox');
+
+            if (currentMode === 'mode1') {
+                // Calculer mensualité
+                const capital = parseFloat(document.getElementById('capital_mode1').value);
+                const taux = parseFloat(document.getElementById('taux_mode1').value);
+                const duree = parseFloat(document.getElementById('duree_mode1').value);
+
+                if (capital && taux !== null && duree) {
+                    const mensualite = calculateMensualite(capital, taux, duree, typeCredit);
+                    const assurance = parseFloat(document.getElementById('assurance_mensuelle').value) || 0;
+                    const mensualiteTotale = mensualite + assurance;
+                    const coutTotal = mensualiteTotale * duree;
+
+                    document.getElementById('result-capital').textContent = capital.toFixed(0) + ' €';
+                    document.getElementById('result-taux').textContent = taux.toFixed(2) + ' %';
+                    document.getElementById('result-mensualite').textContent = mensualiteTotale.toFixed(2) + ' €';
+                    document.getElementById('result-cout').textContent = coutTotal.toFixed(0) + ' €';
+                    resultsBox.style.display = 'block';
+                }
+            } else if (currentMode === 'mode2') {
+                // Calculer capital
+                const mensualite = parseFloat(document.getElementById('mensualite_mode2').value);
+                const taux = parseFloat(document.getElementById('taux_mode2').value);
+                const duree = parseFloat(document.getElementById('duree_mode2').value);
+
+                if (mensualite && taux !== null && duree) {
+                    const capital = calculateCapital(mensualite, taux, duree, typeCredit);
+                    const assurance = parseFloat(document.getElementById('assurance_mensuelle').value) || 0;
+                    const mensualiteTotale = mensualite + assurance;
+                    const coutTotal = mensualiteTotale * duree;
+
+                    document.getElementById('capital_mode2_calc').value = capital.toFixed(2);
+                    document.getElementById('capital_mode2').value = capital.toFixed(2);
+                    document.getElementById('taux_mode2_hidden').value = taux;
+                    document.getElementById('duree_mode2_hidden').value = duree;
+
+                    document.getElementById('result-capital').textContent = capital.toFixed(0) + ' €';
+                    document.getElementById('result-taux').textContent = taux.toFixed(2) + ' %';
+                    document.getElementById('result-mensualite').textContent = mensualiteTotale.toFixed(2) + ' €';
+                    document.getElementById('result-cout').textContent = coutTotal.toFixed(0) + ' €';
+                    resultsBox.style.display = 'block';
+                }
+            } else if (currentMode === 'mode3') {
+                // Calculer taux
+                const capital = parseFloat(document.getElementById('capital_mode3').value);
+                const mensualite = parseFloat(document.getElementById('mensualite_mode3').value);
+                const duree = parseFloat(document.getElementById('duree_mode3').value);
+
+                if (capital && mensualite && duree) {
+                    const taux = calculateTaux(capital, mensualite, duree, typeCredit);
+                    const assurance = parseFloat(document.getElementById('assurance_mensuelle').value) || 0;
+                    const mensualiteTotale = mensualite + assurance;
+                    const coutTotal = mensualiteTotale * duree;
+
+                    document.getElementById('taux_mode3_calc').value = taux.toFixed(3);
+                    document.getElementById('taux_mode3').value = taux.toFixed(3);
+                    document.getElementById('capital_mode3_hidden').value = capital;
+                    document.getElementById('duree_mode3_hidden').value = duree;
+
+                    document.getElementById('result-capital').textContent = capital.toFixed(0) + ' €';
+                    document.getElementById('result-taux').textContent = taux.toFixed(2) + ' %';
+                    document.getElementById('result-mensualite').textContent = mensualiteTotale.toFixed(2) + ' €';
+                    document.getElementById('result-cout').textContent = coutTotal.toFixed(0) + ' €';
+                    resultsBox.style.display = 'block';
+                }
+            }
+        }
+
+        // Écouter les changements sur tous les champs
+        document.querySelectorAll('input[type="number"], select#type_credit').forEach(input => {
+            input.addEventListener('input', calculateValues);
+            input.addEventListener('change', calculateValues);
+        });
+
+        // Initialiser
+        calculateValues();
+    </script>
+</body>
+</html>

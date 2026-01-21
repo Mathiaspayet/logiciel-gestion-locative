@@ -255,6 +255,12 @@ JAZZMIN_SETTINGS = {
                 "icon": "fas fa-chart-pie",
                 "permissions": ["auth.view_user"]
             },
+            {
+                "name": "Assistant Crédit Immobilier",
+                "url": "/api/assistant-credit/",
+                "icon": "fas fa-calculator",
+                "permissions": ["auth.view_user"]
+            },
         ]
     },
 
@@ -286,6 +292,7 @@ JAZZMIN_SETTINGS = {
     "topmenu_links": [
         {"name": "Accueil", "url": "admin:index", "permissions": ["auth.view_user"]},
         {"name": "Dashboard Patrimoine", "url": "/api/patrimoine/dashboard/", "icon": "fas fa-chart-pie"},
+        {"name": "Assistant Crédit", "url": "/api/assistant-credit/", "icon": "fas fa-calculator"},
     ],
 }
 

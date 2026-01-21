@@ -8,6 +8,7 @@ from .views import (
     generer_revision_loyer_pdf,
     creer_tarification_from_revision,
     dashboard_patrimoine,
+    assistant_credit,
 )
 
 urlpatterns = [
@@ -21,4 +22,8 @@ urlpatterns = [
 
     # Dashboard Patrimoine
     path('patrimoine/dashboard/', dashboard_patrimoine, name='dashboard_patrimoine'),
+
+    # Assistant Crédit
+    path('assistant-credit/', assistant_credit, name='assistant_credit'),
+    path('assistant-credit/<int:immeuble_id>/', assistant_credit, name='assistant_credit_immeuble'),
 ]
