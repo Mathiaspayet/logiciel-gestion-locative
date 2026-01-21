@@ -1,5 +1,4 @@
 django
-djangorestframework
 reportlab
 django-jazzmin
 python-dateutil

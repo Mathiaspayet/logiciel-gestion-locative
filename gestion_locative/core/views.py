@@ -10,10 +10,8 @@ from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.db.models import Q
 from django.middleware.csrf import get_token
-from rest_framework import viewsets
 
 from .models import Immeuble, Bail, Local
-from .serializers import ImmeubleSerializer, BailSerializer
 from .pdf_generator import PDFGenerator
 from .calculators import BailCalculator
 from .exceptions import TarificationNotFoundError
@@ -21,20 +19,6 @@ from .patrimoine_calculators import PatrimoineCalculator, RentabiliteCalculator
 
 # Configuration logging
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# API VIEWSETS (inchangés)
-# ============================================================================
-
-class ImmeubleViewSet(viewsets.ModelViewSet):
-    queryset = Immeuble.objects.all()
-    serializer_class = ImmeubleSerializer
-
-
-class BailViewSet(viewsets.ModelViewSet):
-    queryset = Bail.objects.all()
-    serializer_class = BailSerializer
 
 
 # ============================================================================

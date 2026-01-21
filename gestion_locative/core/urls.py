@@ -1,9 +1,6 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from django.urls import path
 # Import des vues (refactorisées utilisant PDFGenerator et templates Django)
 from .views import (
-    ImmeubleViewSet,
-    BailViewSet,
     generer_quittance_pdf,
     generer_avis_echeance_pdf,
     generer_regularisation_pdf,
@@ -12,10 +9,6 @@ from .views import (
     creer_tarification_from_revision,
     dashboard_patrimoine,
 )
-
-router = DefaultRouter()
-router.register(r'immeubles', ImmeubleViewSet)
-router.register(r'baux', BailViewSet)
 
 urlpatterns = [
     # PDF Generation
@@ -28,7 +21,4 @@ urlpatterns = [
 
     # Dashboard Patrimoine
     path('patrimoine/dashboard/', dashboard_patrimoine, name='dashboard_patrimoine'),
-
-    # API
-    path('', include(router.urls)),
 ]
