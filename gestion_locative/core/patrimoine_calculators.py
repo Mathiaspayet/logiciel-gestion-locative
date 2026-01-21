@@ -201,6 +201,7 @@ class RentabiliteCalculator:
         """
         Calcule les loyers bruts perçus sur une année.
         Basé sur les baux actifs de l'immeuble.
+        Prend en compte la fréquence de paiement (mensuel vs trimestriel).
         """
         from .models import Bail
 
@@ -222,14 +223,24 @@ class RentabiliteCalculator:
                 mois_actifs = (fin_effective.year - debut_effectif.year) * 12 + (fin_effective.month - debut_effectif.month) + 1
                 mois_actifs = min(mois_actifs, 12)
 
-                # Récupérer les tarifications pour chaque mois
-                for mois in range(1, mois_actifs + 1):
-                    date_mois = date(annee, min(mois + debut_effectif.month - 1, 12), 1)
-                    if date_mois.month > 12:
-                        continue
-                    tarif = bail.get_tarification_at(date_mois)
+                if bail.frequence_paiement == 'TRIMESTRIEL':
+                    # Pour un bail trimestriel : 4 loyers par an (ou prorata)
+                    # Calculer le nombre de trimestres complets
+                    nombre_trimestres = mois_actifs / 3
+
+                    # Récupérer le tarif actuel
+                    tarif = bail.get_tarification_at(date(annee, 6, 15))  # Milieu de l'année
                     if tarif:
-                        total_loyers += float(tarif.loyer_hc)
+                        total_loyers += float(tarif.loyer_hc) * nombre_trimestres
+                else:
+                    # Pour un bail mensuel : récupérer les tarifications pour chaque mois
+                    for mois in range(1, mois_actifs + 1):
+                        date_mois = date(annee, min(mois + debut_effectif.month - 1, 12), 1)
+                        if date_mois.month > 12:
+                            continue
+                        tarif = bail.get_tarification_at(date_mois)
+                        if tarif:
+                            total_loyers += float(tarif.loyer_hc)
 
         return total_loyers
 
@@ -310,7 +321,11 @@ class RentabiliteCalculator:
         for local in immeuble.locaux.all():
             bail_actif = local.baux.filter(actif=True, date_fin__isnull=True).first()
             if bail_actif:
-                total_loyers += float(bail_actif.loyer_hc)
+                loyer = float(bail_actif.loyer_hc)
+                # Si le bail est trimestriel, diviser par 3 pour avoir l'équivalent mensuel
+                if bail_actif.frequence_paiement == 'TRIMESTRIEL':
+                    loyer = loyer / 3
+                total_loyers += loyer
 
         # Mensualités des crédits
         total_mensualites = sum(credit.mensualite for credit in immeuble.credits.all())
@@ -448,7 +463,11 @@ class RatiosCalculator:
             for local in immeuble.locaux.all():
                 bail_actif = local.baux.filter(actif=True, date_fin__isnull=True).first()
                 if bail_actif:
-                    total_loyers += float(bail_actif.loyer_hc)
+                    loyer = float(bail_actif.loyer_hc)
+                    # Si le bail est trimestriel, diviser par 3 pour avoir l'équivalent mensuel
+                    if bail_actif.frequence_paiement == 'TRIMESTRIEL':
+                        loyer = loyer / 3
+                    total_loyers += loyer
 
         if total_loyers == 0:
             return None
