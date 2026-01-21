@@ -8,7 +8,7 @@
 
 **Quoi** : Application de gestion locative professionnelle pour propriétaires français.
 
-**Stack** : Django 6.0 + Python 3.11 + SQLite + ReportLab + Django REST Framework
+**Stack** : Django 6.0 + Python 3.11 + SQLite + ReportLab
 
 **Utilisateurs** : Propriétaires/Gestionnaires immobiliers (SCI, particuliers)
 
@@ -71,9 +71,10 @@ http://127.0.0.1:8000/admin/
 gestion_locative/
 ├── core/
 │   ├── models.py          ⭐ MODÈLES - Bail, BailTarification, Regularisation...
-│   ├── views.py           ⭐ PDF - 5 fonctions génération documents
+│   ├── views.py           ⭐ VUES - Fonctions génération documents PDF
+│   ├── pdf_generator.py   📄 GÉNÉRATEUR - Classe PDFGenerator
+│   ├── calculators.py     🧮 CALCULATEURS - Logique métier
 │   ├── admin.py           ⭐ ADMIN - Configuration interface + actions
-│   ├── serializers.py     📡 API REST
 │   ├── urls.py            🔗 Routes
 │   └── migrations/        📂 Historique BDD (0011-0014 importants)
 ├── settings.py            ⚙️ Configuration Django

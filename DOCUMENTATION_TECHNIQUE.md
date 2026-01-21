@@ -11,11 +11,10 @@
 2. [Modèles de Données](#2-modèles-de-données)
 3. [Système d'Historique Tarifaire](#3-système-dhistorique-tarifaire)
 4. [Fonctions PDF](#4-fonctions-pdf)
-5. [API REST](#5-api-rest)
-6. [Migrations](#6-migrations)
-7. [Règles de Gestion](#7-règles-de-gestion)
-8. [Guide de Maintenance](#8-guide-de-maintenance)
-9. [Debugging et Troubleshooting](#9-debugging-et-troubleshooting)
+5. [Migrations](#5-migrations)
+6. [Règles de Gestion](#6-règles-de-gestion)
+7. [Guide de Maintenance](#7-guide-de-maintenance)
+8. [Debugging et Troubleshooting](#8-debugging-et-troubleshooting)
 
 ---
 
@@ -28,7 +27,7 @@
 *   **Base de Données** : SQLite (développement) / PostgreSQL compatible
 *   **Génération PDF** : ReportLab
 *   **Interface Admin** : Django Admin avec Jazzmin
-*   **API** : Django REST Framework
+*   **Templates** : Django Templates
 
 ### 1.2 Structure du Projet
 
@@ -37,10 +36,11 @@ logiciel gestion locative/
 ├── gestion_locative/          # Projet Django principal
 │   ├── core/                  # Application principale
 │   │   ├── models.py          # Modèles de données
-│   │   ├── views.py           # Fonctions PDF
+│   │   ├── views.py           # Vues et fonctions PDF
 │   │   ├── admin.py           # Configuration admin
-│   │   ├── serializers.py     # API REST
 │   │   ├── urls.py            # Routes
+│   │   ├── pdf_generator.py  # Générateur de PDFs
+│   │   ├── calculators.py    # Calculateurs métier
 │   │   └── migrations/        # Migrations de base de données
 │   ├── settings.py            # Configuration Django
 │   ├── urls.py                # Routes principales
@@ -72,7 +72,7 @@ Le projet utilise une architecture monolithique basée sur Django pour les raiso
 
 3. **Simplicité de Déploiement** : Un seul processus Python à déployer, pas d'orchestration complexe.
 
-4. **Évolutivité Future** : L'architecture permet d'ajouter facilement un frontend React/Vue via l'API REST déjà en place.
+4. **Maintenance Réduite** : Moins de dépendances et de composants à maintenir.
 
 **Base de Données**
 
@@ -122,22 +122,6 @@ def generer_quittance_pdf(request, pk):
 
 **Alternative évitée** :
 - Développer un frontend React/Vue : Temps de développement x10, complexité accrue
-
-#### API REST : Django REST Framework
-
-**État actuel** : Fonctionnelle mais non consommée par l'interface admin
-
-**Objectif futur** :
-- Application mobile locataire (consultation quittances, soldes)
-- Tableau de bord React pour le propriétaire
-- Intégration comptable tierce
-
-**Endpoints disponibles** :
-```
-GET /api/immeubles/
-GET /api/baux/
-GET /api/locaux/
-```
 
 ---
 
@@ -586,76 +570,7 @@ loyer_prorata = montant_periode * (nb_jours_presence / nb_jours_periode)
 
 ---
 
-## 5. API REST
-
-### 5.1 Endpoints
-
-**Base URL** : `http://127.0.0.1:8000/api/`
-
-```
-GET /api/immeubles/
-GET /api/immeubles/{id}/
-GET /api/baux/
-GET /api/baux/{id}/
-GET /api/locaux/
-GET /api/locaux/{id}/
-```
-
-### 5.2 Serializers
-
-**Fichier** : `gestion_locative/core/serializers.py`
-
-**BailSerializer avec Historique** :
-```python
-class BailSerializer(serializers.ModelSerializer):
-    occupants = OccupantSerializer(many=True, read_only=True)
-    regularisations = RegularisationSerializer(many=True, read_only=True)
-    tarifications = BailTarificationSerializer(many=True, read_only=True)
-    tarification_actuelle = serializers.SerializerMethodField()
-
-    def get_tarification_actuelle(self, obj):
-        tarif = obj.tarification_actuelle
-        return BailTarificationSerializer(tarif).data if tarif else None
-```
-
-### 5.3 Exemple de Réponse
-
-```json
-{
-  "id": 1,
-  "local": 2,
-  "date_debut": "2022-01-01",
-  "actif": true,
-  "tarifications": [
-    {
-      "id": 3,
-      "date_debut": "2025-01-01",
-      "date_fin": null,
-      "loyer_hc": "450.00",
-      "charges": "35.00",
-      "reason": "Révision IRL T4 2024",
-      "created_at": "2025-01-01T10:00:00Z"
-    },
-    {
-      "id": 1,
-      "date_debut": "2022-01-01",
-      "date_fin": "2024-12-31",
-      "loyer_hc": "420.00",
-      "charges": "30.00",
-      "reason": "Tarification initiale (migration automatique)"
-    }
-  ],
-  "tarification_actuelle": {
-    "id": 3,
-    "loyer_hc": "450.00",
-    "charges": "35.00"
-  }
-}
-```
-
----
-
-## 6. Migrations
+## 5. Migrations
 
 ### 6.1 Chronologie
 
@@ -666,7 +581,7 @@ class BailSerializer(serializers.ModelSerializer):
 | 0013 | Jan 2026 | Migration automatique données → BailTarification |
 | 0014 | Jan 2026 | Suppression champs obsolètes (loyer_hc, charges, taxes...) |
 
-### 6.2 Migration 0013 : Migration des Données
+### 5.2 Migration 0013 : Migration des Données
 
 **Fichier** : `core/migrations/0013_migrate_bail_to_tarifications.py`
 
@@ -699,7 +614,7 @@ def reverse_migration(apps, schema_editor):
     BailTarification.objects.all().delete()
 ```
 
-### 6.3 Migration 0014 : Suppression Champs
+### 5.3 Migration 0014 : Suppression Champs
 
 **Opérations** :
 ```python
@@ -714,7 +629,7 @@ operations = [
 
 **⚠️ ATTENTION** : Irréversible sans restauration backup.
 
-### 6.4 Commandes Utiles
+### 5.4 Commandes Utiles
 
 ```bash
 # Créer migration
@@ -738,9 +653,9 @@ python manage.py migrate core 0013
 
 ---
 
-## 7. Règles de Gestion
+## 6. Règles de Gestion
 
-### 7.0 Glossaire des Termes Métier
+### 6.0 Glossaire des Termes Métier
 
 | Terme | Définition | Exemple |
 |-------|------------|---------|
@@ -768,7 +683,7 @@ python manage.py migrate core 0013
 | **TOM** | Taxe Ordures Ménagères (souvent refacturée au locataire) | 180€/an au prorata |
 | **TVA immobilière** | TVA sur loyers commerciaux meublés (20%) | Loyer HC+Charges × 20% |
 
-### 7.1 Proratisation des Charges (Régularisation)
+### 6.1 Proratisation des Charges (Régularisation)
 
 **Formule Dépenses** :
 ```
@@ -789,7 +704,7 @@ Pour chaque mois de la période :
     Sinon : Montant = Tarif.charges × (Jours présence / Jours mois)
 ```
 
-### 7.2 Gestion des Compteurs
+### 6.2 Gestion des Compteurs
 
 **Si relevé couvre une période plus large que régularisation** :
 ```
@@ -797,7 +712,7 @@ Consommation Régul = Consommation Totale
                    × (Jours Régul / Jours Relevé)
 ```
 
-### 7.3 TVA et Baux Commerciaux
+### 6.3 TVA et Baux Commerciaux
 
 **Si `bail.soumis_tva = True`** :
 ```
@@ -809,9 +724,9 @@ Note : Taxes (TF, TOM) ne sont PAS soumises à TVA
 
 ---
 
-## 8. Guide de Maintenance
+## 7. Guide de Maintenance
 
-### 8.1 Créer une Tarification Manuellement
+### 7.1 Créer une Tarification Manuellement
 
 **Via Admin** :
 ```
@@ -852,7 +767,7 @@ BailTarification.objects.create(
 )
 ```
 
-### 8.2 Vérifier Continuité des Tarifications
+### 7.2 Vérifier Continuité des Tarifications
 
 **Script de diagnostic** :
 ```python
@@ -874,7 +789,7 @@ for bail in Bail.objects.filter(actif=True):
                 print(f"⚠️ Trou: {bail} entre {current.date_fin} et {next.date_debut}")
 ```
 
-### 8.3 Backup et Restauration
+### 7.3 Backup et Restauration
 
 **Backup** :
 ```bash
@@ -897,7 +812,7 @@ cp backups/db_backup_20260118.sqlite3 gestion_locative/db.sqlite3
 python manage.py runserver
 ```
 
-### 8.4 Mise à Jour du Code
+### 7.4 Mise à Jour du Code
 
 ```bash
 # 1. BACKUP OBLIGATOIRE
@@ -920,9 +835,9 @@ python manage.py collectstatic --noinput
 
 ---
 
-## 9. Debugging et Troubleshooting
+## 8. Debugging et Troubleshooting
 
-### 9.1 Erreur : "Aucune tarification définie"
+### 8.1 Erreur : "Aucune tarification définie"
 
 **Symptôme** :
 ```
@@ -951,7 +866,7 @@ for t in bail.tarifications.all():
 - Créer tarification pour combler le trou
 - OU modifier date_fin de la tarification précédente
 
-### 9.2 Erreur : "Property loyer_hc returns 0"
+### 8.2 Erreur : "Property loyer_hc returns 0"
 
 **Cause** : Aucune tarification active aujourd'hui.
 
@@ -972,7 +887,7 @@ for t in bail.tarifications.all():
     print(f"{active} - {t.date_debut} → {t.date_fin or '∞'} - {t.loyer_hc}€")
 ```
 
-### 9.3 Performance : Requêtes N+1
+### 8.3 Performance : Requêtes N+1
 
 **Problème** :
 ```python
@@ -990,7 +905,7 @@ for bail in baux:
     print(bail.loyer_hc)  # Pas de query supplémentaire
 ```
 
-### 9.4 Migration Bloquée
+### 8.4 Migration Bloquée
 
 **Diagnostic** :
 ```bash
@@ -1016,7 +931,7 @@ cp backups/db_backup_avant_tarif.sqlite3 gestion_locative/db.sqlite3
 python manage.py migrate
 ```
 
-### 9.5 Activer les Logs SQL
+### 8.5 Activer les Logs SQL
 
 **Dans `settings.py`** :
 ```python
@@ -1258,14 +1173,16 @@ def revision_irl_groupee(self, request, queryset):
 - Solde de charges
 - Déclaration d'incident (ticket)
 
-**Stack** : React Native + API REST existante
+**Stack** : React Native + API REST (à développer)
 
-**Endpoints supplémentaires nécessaires** :
+**Endpoints à créer** :
 ```python
 GET /api/locataires/me/quittances/
 GET /api/locataires/me/solde/
 POST /api/locataires/me/incidents/
 ```
+
+**Note** : Nécessiterait le développement d'une API REST dédiée avec authentification locataire.
 
 ### 10.3 Optimisations
 
@@ -1349,9 +1266,10 @@ auditlog.register(Regularisation)
 
 **Fichiers clés pour intervention** :
 - `core/models.py` - Modèles de données et logique métier
-- `core/views.py` - Fonctions PDF et formulaires
+- `core/views.py` - Vues, fonctions PDF et formulaires
+- `core/pdf_generator.py` - Générateur de PDFs
+- `core/calculators.py` - Calculateurs métier
 - `core/admin.py` - Configuration interface admin
-- `core/serializers.py` - API REST
 - `core/migrations/` - Historique base de données
 
 **Commandes de diagnostic** :

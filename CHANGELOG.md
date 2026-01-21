@@ -1,5 +1,69 @@
 # Changelog - Gestion Locative
 
+## [2026-01-21] - Suppression de l'API REST
+
+### 🎯 Objectif
+Simplifier le projet en retirant l'API REST Django REST Framework qui n'est pas utilisée pour une application locale uniquement.
+
+### 🗑️ Suppressions
+
+#### 1. Code Backend
+- **Fichier supprimé** : `core/serializers.py`
+  - `ImmeubleSerializer`
+  - `LocalSerializer`
+  - `BailSerializer` avec historique tarifaire
+  - `BailTarificationSerializer`
+  - `RegularisationSerializer`
+  - `OccupantSerializer`
+
+- **Modifications `core/views.py`** :
+  - Retrait de l'import `from rest_framework import viewsets`
+  - Suppression de `ImmeubleViewSet`
+  - Suppression de `BailViewSet`
+
+- **Modifications `core/urls.py`** :
+  - Retrait de l'import `from rest_framework.routers import DefaultRouter`
+  - Suppression du `router` et de ses enregistrements
+  - Retrait de la route `path('', include(router.urls))`
+
+#### 2. Dépendances
+- **`requirements.txt`** : Retrait de `djangorestframework`
+- **`settings.py`** : Retrait de `'rest_framework'` des `INSTALLED_APPS`
+
+#### 3. Documentation
+- **`README.md`** :
+  - Retrait de la section "API REST"
+  - Ajout de la section "Gestion de Patrimoine" à la place
+  - Mise à jour de la stack technologique
+
+- **`DOCUMENTATION_TECHNIQUE.md`** :
+  - Suppression de la section 5 "API REST"
+  - Renumérotation des sections suivantes
+  - Mise à jour de la table des matières
+  - Retrait des mentions de l'API REST dans l'architecture
+  - Mise à jour de la structure du projet
+
+- **`QUICK_START.md`** :
+  - Retrait de "Django REST Framework" de la stack
+  - Retrait de `serializers.py` de la structure du projet
+  - Ajout de `pdf_generator.py` et `calculators.py`
+
+### ✅ Avantages
+- **Moins de code** : 88 lignes de code supprimées
+- **Moins de dépendances** : Une dépendance en moins à maintenir
+- **Plus simple** : Architecture plus claire pour une utilisation locale
+- **Plus sécurisé** : Surface d'attaque réduite
+
+### 📝 Note
+Toutes les fonctionnalités principales restent intactes :
+- ✅ Django Admin
+- ✅ Génération de PDFs
+- ✅ Dashboard patrimoine
+- ✅ Historique tarifaire
+- ✅ Révision de loyer IRL/ILC
+
+---
+
 ## [2024-01-18] - Optimisation Progressive - Phase 1
 
 ### 🎯 Objectif

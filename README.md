@@ -31,16 +31,17 @@ L'interface d'administration s'ouvrira automatiquement dans votre navigateur à 
 *   **Clés de Répartition :** Répartition par tantièmes, surface, ou consommation réelle (compteurs).
 *   **Régularisations :** Suivi des paiements (payé/non payé, date de paiement, notes).
 
-### 🔄 Historique Tarifaire (Nouveau !)
+### 🔄 Historique Tarifaire
 *   **Traçabilité Complète :** Chaque changement de loyer, charges ou taxes est enregistré avec dates d'application.
 *   **Audit Trail :** Qui, quand, pourquoi pour chaque modification tarifaire.
 *   **Calculs Précis :** Les PDFs utilisent automatiquement le bon tarif pour chaque période (même en cas de changement en cours d'année).
 *   **Révision IRL/ILC :** Assistant manuel qui calcule le nouveau loyer mais **exige une validation** avant application (aucune mise à jour automatique).
 
-### 🌐 API REST
-*   **Endpoints :** `/api/immeubles/`, `/api/baux/`, `/api/locaux/`
-*   **Format JSON :** Accès complet aux données pour intégrations tierces.
-*   **Inclut :** Historique tarifaire, régularisations, occupants.
+### 📈 Gestion de Patrimoine
+*   **Dashboard Patrimoine :** Vue d'ensemble de votre patrimoine immobilier avec graphiques et indicateurs.
+*   **Valorisation :** Suivi de la valeur de vos biens dans le temps.
+*   **Rentabilité :** Calcul du rendement brut et du cashflow mensuel.
+*   **Projection :** Évolution de votre patrimoine sur 10 ans.
 
 ## 📊 Architecture Technique
 
@@ -49,7 +50,7 @@ L'interface d'administration s'ouvrira automatiquement dans votre navigateur à 
 *   **Base de données :** SQLite (production) / PostgreSQL compatible
 *   **PDF :** ReportLab
 *   **Admin :** Django Admin avec Jazzmin
-*   **API :** Django REST Framework
+*   **Interface :** Templates Django
 
 ### Modèles Principaux
 *   `Proprietaire` : Propriétaires des biens
