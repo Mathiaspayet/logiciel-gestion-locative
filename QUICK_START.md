@@ -18,6 +18,7 @@
 - **Historique tarifaire complet** (v2.0) - changements loyers/charges tracés
 - Régularisation charges au prorata temporis
 - Révision loyers IRL/ILC
+- **Assistant Crédit Immobilier** - Calcul automatique des données manquantes
 
 ---
 

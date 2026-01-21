@@ -42,6 +42,7 @@ L'interface d'administration s'ouvrira automatiquement dans votre navigateur à 
 *   **Valorisation :** Suivi de la valeur de vos biens dans le temps.
 *   **Rentabilité :** Calcul du rendement brut et du cashflow mensuel.
 *   **Projection :** Évolution de votre patrimoine sur 10 ans.
+*   **Assistant Crédit Immobilier :** Formulaire intelligent avec calculs automatiques pour créer vos crédits (3 modes selon les données connues).
 
 ## 📊 Architecture Technique
 

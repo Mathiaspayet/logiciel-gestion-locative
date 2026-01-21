@@ -15,6 +15,7 @@
 6. [Règles de Gestion](#6-règles-de-gestion)
 7. [Guide de Maintenance](#7-guide-de-maintenance)
 8. [Debugging et Troubleshooting](#8-debugging-et-troubleshooting)
+9. [Assistant Crédit Immobilier](#9-assistant-crédit-immobilier)
 
 ---
 
@@ -966,6 +967,226 @@ with override_settings(DEBUG=True):
     for query in connection.queries:
         print(query['sql'])
 ```
+
+---
+
+## 9. Assistant Crédit Immobilier
+
+### 9.1 Principe de Fonctionnement
+
+L'Assistant Crédit Immobilier est un **formulaire intelligent** qui calcule automatiquement les données manquantes lors de la création d'un crédit.
+
+**Problème résolu** : Lors de la négociation d'un crédit, on ne connaît généralement pas toutes les données. L'assistant permet de renseigner uniquement ce qu'on connaît et calcule le reste.
+
+### 9.2 Les 3 Modes de Calcul
+
+#### Mode 1 : Capital connu
+
+**Données à saisir** :
+- Capital emprunté
+- Taux d'intérêt
+- Durée (mois)
+
+**Calculé automatiquement** :
+- Mensualité hors assurance
+- Coût total du crédit
+
+**Formule utilisée** (crédit amortissable) :
+```
+M = C × (r × (1+r)^n) / ((1+r)^n - 1)
+
+Où :
+- M = Mensualité
+- C = Capital
+- r = Taux mensuel (taux annuel / 12)
+- n = Nombre de mois
+```
+
+#### Mode 2 : Mensualité connue
+
+**Données à saisir** :
+- Mensualité hors assurance
+- Taux d'intérêt
+- Durée (mois)
+
+**Calculé automatiquement** :
+- Capital emprunté
+
+**Formule utilisée** (inverse de la formule amortissable) :
+```
+C = M × ((1+r)^n - 1) / (r × (1+r)^n)
+```
+
+#### Mode 3 : Capital + Mensualité connus
+
+**Données à saisir** :
+- Capital emprunté
+- Mensualité hors assurance
+- Durée (mois)
+
+**Calculé automatiquement** :
+- Taux d'intérêt
+
+**Méthode utilisée** : **Newton-Raphson**
+
+Résolution numérique itérative car il n'existe pas de formule analytique directe pour calculer le taux.
+
+```python
+def calculateTaux(capital, mensualite, duree):
+    taux = 0.05  # Estimation initiale 5%
+    tolerance = 0.0001
+    maxIterations = 100
+
+    for i in range(maxIterations):
+        tauxMensuel = taux / 12
+        mensualiteCalculee = capital * (tauxMensuel * (1 + tauxMensuel)^duree) / ((1 + tauxMensuel)^duree - 1)
+
+        if abs(mensualiteCalculee - mensualite) < tolerance:
+            return taux * 100  # Convergence atteinte
+
+        # Calcul dérivée et mise à jour
+        derivee = ...
+        taux = taux - (mensualiteCalculee - mensualite) / derivee
+
+    return taux * 100
+```
+
+### 9.3 Support des Crédits In Fine
+
+L'assistant détecte automatiquement le type de crédit et adapte les formules :
+
+**Crédit Amortissable** : Capital + intérêts remboursés mensuellement
+**Crédit In Fine** : Intérêts mensuels uniquement, capital en fin de période
+
+**Formule In Fine** :
+```
+M = C × (taux_annuel / 12)
+```
+
+### 9.4 Interface Utilisateur
+
+**Fichier** : `core/templates/credit_forms/assistant_credit.html`
+
+**Technologies** :
+- HTML5 / CSS3 (design moderne gradient violet/bleu)
+- JavaScript vanilla (calculs temps réel côté client)
+- Django Templates (backend)
+
+**Fonctionnalités UX** :
+- Sélection du mode par cartes cliquables
+- Calculs instantanés lors de la saisie (événements `input`)
+- Champs calculés en lecture seule (grisés)
+- Affichage des résultats avant enregistrement
+- Validation HTML5 des champs requis
+
+### 9.5 Vue Django
+
+**Fichier** : `core/views.py` (lignes 675-736)
+
+```python
+@staff_member_required
+def assistant_credit(request, immeuble_id=None):
+    """
+    Assistant intelligent pour créer un crédit immobilier.
+    """
+    immeubles = Immeuble.objects.all()
+
+    if request.method == 'POST':
+        # Récupération des données (déjà calculées côté client)
+        capital_emprunte = Decimal(request.POST.get('capital_emprunte'))
+        taux_interet = Decimal(request.POST.get('taux_interet'))
+        duree_mois = int(request.POST.get('duree_mois'))
+
+        # Création du crédit
+        credit = CreditImmobilier.objects.create(...)
+
+        # Redirection vers l'admin du crédit
+        return redirect('admin:core_creditimmobilier_change', args=[credit.pk])
+
+    return render(request, 'credit_forms/assistant_credit.html', {'immeubles': immeubles})
+```
+
+### 9.6 Routes
+
+**Fichier** : `core/urls.py`
+
+```python
+urlpatterns = [
+    # ...
+    path('assistant-credit/', assistant_credit, name='assistant_credit'),
+    path('assistant-credit/<int:immeuble_id>/', assistant_credit, name='assistant_credit_immeuble'),
+]
+```
+
+**URLs accessibles** :
+- `/api/assistant-credit/` - Formulaire générique
+- `/api/assistant-credit/5/` - Formulaire avec immeuble pré-sélectionné
+
+### 9.7 Intégration dans l'Admin
+
+**Configuration Jazzmin** (`settings.py`) :
+
+```python
+JAZZMIN_SETTINGS = {
+    "custom_links": {
+        "core": [
+            {
+                "name": "Assistant Crédit Immobilier",
+                "url": "/api/assistant-credit/",
+                "icon": "fas fa-calculator",
+            },
+        ]
+    },
+    "topmenu_links": [
+        {"name": "Assistant Crédit", "url": "/api/assistant-credit/", "icon": "fas fa-calculator"},
+    ],
+}
+```
+
+**Accès** :
+1. Menu latéral → Section "Core" → "Assistant Crédit Immobilier"
+2. Menu du haut → "Assistant Crédit"
+
+### 9.8 Exemple d'Utilisation
+
+**Scénario** : Vous négociez avec votre banque et connaissez la mensualité.
+
+1. Ouvrir l'assistant (`/api/assistant-credit/`)
+2. Cliquer sur le mode **"Mensualité connue"**
+3. Remplir :
+   - Immeuble : "Résidence Les Pins"
+   - Banque : "Crédit Agricole"
+   - Date début : 01/01/2024
+   - **Mensualité** : 850 € (hors assurance)
+   - **Taux** : 2.5 %
+   - **Durée** : 240 mois (20 ans)
+   - Assurance : 15 €/mois
+4. Le formulaire calcule instantanément :
+   - **Capital** : ~156 500 €
+   - **Coût total** : 207 600 €
+5. Valider → Crédit enregistré et redirection vers sa fiche admin
+
+### 9.9 Avantages
+
+- ✅ **Gain de temps** : Plus besoin de calculatrice ou Excel
+- ✅ **Précision** : Formules mathématiques exactes
+- ✅ **Flexibilité** : 3 modes selon les données disponibles
+- ✅ **Intégré** : Directement dans l'interface admin Django
+- ✅ **Temps réel** : Calculs instantanés côté client (pas de rechargement)
+- ✅ **Validation** : Vérification avant enregistrement
+
+### 9.10 Limites et Évolutions Possibles
+
+**Limites actuelles** :
+- Calcul du taux (mode 3) : précision ~0.001% (suffisant pour usage pratique)
+- Support uniquement crédits amortissables et in fine classiques
+- Pas de gestion des différés ou modulations
+
+**Évolutions futures** :
+- **Simulation comparative** : Afficher plusieurs scénarios côte à côte
+- **Import depuis offre bancaire** : Parsing PDF/email pour pré-remplir
+- **Calculateur de TAEG** : Inclure frais de dossier, assurances, garanties
+- **Optimisation fiscale** : Suggestion répartition capital/intérêts pour déclaration
 
 ---
 

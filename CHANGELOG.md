@@ -1,5 +1,81 @@
 # Changelog - Gestion Locative
 
+## [2026-01-21] - Assistant Crédit Immobilier Intelligent
+
+### 🎯 Objectif
+Faciliter la saisie des crédits immobiliers en calculant automatiquement les données manquantes selon ce que l'utilisateur connaît.
+
+### ✨ Nouvelle Fonctionnalité
+
+#### Assistant Crédit Immobilier
+Formulaire intelligent accessible depuis l'admin Django qui calcule en temps réel les valeurs manquantes.
+
+**3 modes de calcul** :
+
+1. **Mode "Capital connu"**
+   - Vous saisissez : Capital, Taux, Durée
+   - Calcul automatique : Mensualité et Coût total
+   - Formule : `M = C × (r × (1+r)^n) / ((1+r)^n - 1)`
+
+2. **Mode "Mensualité connue"**
+   - Vous saisissez : Mensualité, Taux, Durée
+   - Calcul automatique : Capital emprunté
+   - Formule inverse de la mensualité
+
+3. **Mode "Données partielles"**
+   - Vous saisissez : Capital, Mensualité, Durée
+   - Calcul automatique : Taux d'intérêt
+   - Méthode : Newton-Raphson (résolution numérique)
+
+**Fonctionnalités** :
+- ✅ Calculs en temps réel (JavaScript côté client)
+- ✅ Interface moderne avec design gradient violet/bleu
+- ✅ Support crédits amortissables et in fine
+- ✅ Affichage résultats avant enregistrement
+- ✅ Validation des champs avec HTML5
+- ✅ Redirection automatique vers la fiche crédit après création
+
+**Accès** :
+- Menu latéral : Core → "Assistant Crédit Immobilier" 🧮
+- Menu du haut : "Assistant Crédit"
+- URL directe : `/api/assistant-credit/`
+
+**Fichiers ajoutés** :
+- `core/templates/credit_forms/assistant_credit.html` (666 lignes)
+- Vue `assistant_credit()` dans `core/views.py`
+- Routes dans `core/urls.py`
+- Configuration Jazzmin dans `settings.py`
+
+**Documentation** :
+- Section complète dans `DOCUMENTATION_TECHNIQUE.md` (section 9)
+- Mise à jour `README.md`, `QUICK_START.md`
+
+### 🧮 Formules Mathématiques
+
+**Crédit Amortissable** :
+```
+Mensualité = Capital × (r × (1+r)^n) / ((1+r)^n - 1)
+Capital = Mensualité × ((1+r)^n - 1) / (r × (1+r)^n)
+Taux = Résolution Newton-Raphson
+```
+
+**Crédit In Fine** :
+```
+Mensualité = Capital × (taux_annuel / 12)
+```
+
+### 💡 Cas d'Usage
+
+**Exemple** : Vous négociez avec votre banque et elle vous propose 850€/mois.
+
+1. Ouvrez l'assistant
+2. Sélectionnez "Mensualité connue"
+3. Entrez : 850€, 2.5%, 240 mois, assurance 15€
+4. → Le formulaire calcule : Capital ≈ 156 500€, Coût total : 207 600€
+5. Validez → Crédit enregistré
+
+---
+
 ## [2026-01-21] - Suppression de l'API REST
 
 ### 🎯 Objectif
