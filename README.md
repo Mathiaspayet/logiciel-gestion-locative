@@ -54,24 +54,38 @@ L'interface d'administration s'ouvrira automatiquement dans votre navigateur à 
 *   **Interface :** Templates Django
 
 ### Modèles Principaux
+
+**Gestion Locative :**
 *   `Proprietaire` : Propriétaires des biens
-*   `Immeuble` : Bâtiments
+*   `Immeuble` : Bâtiments (avec prix achat, régime fiscal)
 *   `Local` : Appartements, commerces, parkings, bureaux
 *   `Bail` : Contrats de location
 *   `BailTarification` : **Historique des tarifs** (loyer, charges, taxes avec périodes d'application)
 *   `Occupant` : Locataires et garants
-*   `Depense` : Charges et dépenses
+*   `Ajustement` : Ajustements ponctuels de loyer
+*   `Regularisation` : Régularisations de charges avec suivi de paiement
+
+**Gestion des Charges :**
 *   `CleRepartition` : Clés de répartition des charges
 *   `QuotePart` : Tantièmes par local
+*   `Depense` : Charges et dépenses
 *   `Consommation` : Relevés de compteurs
-*   `Regularisation` : Régularisations de charges avec suivi de paiement
-*   `Ajustement` : Ajustements ponctuels de loyer
+
+**Gestion Patrimoniale :**
+*   `EstimationValeur` : Historique des estimations de valeur des immeubles
+*   `CreditImmobilier` : Crédits immobiliers (amortissable, in fine)
+*   `EcheanceCredit` : Échéancier détaillé des crédits
+*   `ChargeFiscale` : Charges déductibles (intérêts, assurances, travaux, taxes)
+*   `Amortissement` : Tableau d'amortissement LMNP
+*   `VacanceLocative` : Périodes de vacance des locaux
 
 ### Migrations Importantes
 *   `0011` : Ajout suivi des paiements de régularisations
 *   `0012` : Création du modèle BailTarification
 *   `0013` : Migration automatique des tarifs existants vers BailTarification
 *   `0014` : Suppression des champs obsolètes (loyer_hc, charges, taxes) du modèle Bail
+*   `0015` : Ajout des modèles de gestion patrimoniale (EstimationValeur, CreditImmobilier, etc.)
+*   `0016` : Correction contrainte unique_together sur QuotePart
 
 > **Note :** Les champs `loyer_hc`, `charges`, `taxes`, `indice_reference`, `trimestre_reference` sont désormais accessibles uniquement via des **properties** qui lisent depuis le modèle BailTarification.
 
@@ -130,13 +144,22 @@ python manage.py migrate core 0013
 
 ## 📝 Changelog
 
+### Version 2.1 (Février 2026)
+- ✅ Dashboard Patrimoine avec graphiques et projection 10 ans
+- ✅ Dashboard détail par immeuble (30+ indicateurs)
+- ✅ Assistant Crédit Immobilier intelligent (3 modes de calcul)
+- ✅ Gestion complète des crédits et échéanciers
+- ✅ Suivi des charges fiscales et amortissements
+- ✅ Gestion des vacances locatives
+- ✅ Admin standalone pour Ajustements et Quote-parts
+- ✅ Correction validation des chevauchements de tarifications
+
 ### Version 2.0 (Janvier 2026)
 - ✅ Système d'historique tarifaire complet
 - ✅ Assistant de révision de loyer (validation manuelle)
 - ✅ Calcul mois par mois pour régularisations
 - ✅ Suivi des paiements de régularisations
 - ✅ Design harmonisé pour tous les PDFs
-- ✅ API REST avec historique tarifaire
 
 ### Version 1.0
 - ✅ Gestion immeubles, locaux, baux

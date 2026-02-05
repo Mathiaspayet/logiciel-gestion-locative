@@ -194,7 +194,7 @@
             <tbody>
                 {% for immeuble in immeubles %}
                 <tr>
-                    <td><a href="{% url 'admin:core_immeuble_change' immeuble.id %}">{{ immeuble.nom }}</a></td>
+                    <td><a href="{% url 'dashboard_immeuble_detail' immeuble.id %}">{{ immeuble.nom }}</a></td>
                     <td>{{ immeuble.regime_fiscal_display }}</td>
                     <td>{{ immeuble.valeur_actuelle|floatformat:0 }} €</td>
                     <td>{{ immeuble.capital_restant_du|floatformat:0 }} €</td>

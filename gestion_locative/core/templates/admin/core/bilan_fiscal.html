@@ -1,0 +1,306 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Bilan Fiscal {{ annee }} - {{ immeuble.nom }}{% endblock %}
+
+{% block content %}
+<style>
+    .fiscal-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    .fiscal-header {
+        background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+    }
+    .fiscal-header h1 {
+        margin: 0 0 10px 0;
+        font-size: 28px;
+    }
+    .fiscal-header .subtitle {
+        opacity: 0.9;
+        font-size: 16px;
+    }
+    .year-selector {
+        margin-top: 15px;
+    }
+    .year-selector select {
+        padding: 8px 15px;
+        font-size: 16px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    .section {
+        background: white;
+        border-radius: 10px;
+        padding: 25px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .section h2 {
+        color: #2c3e50;
+        border-bottom: 2px solid #3498db;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+        font-size: 20px;
+    }
+    .section h3 {
+        color: #34495e;
+        font-size: 16px;
+        margin: 20px 0 10px 0;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 15px;
+    }
+    th, td {
+        padding: 12px 15px;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+    }
+    th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+    .amount {
+        text-align: right;
+        font-family: monospace;
+        font-size: 14px;
+    }
+    .total-row {
+        background: #f0f7ff;
+        font-weight: bold;
+    }
+    .total-row td {
+        border-top: 2px solid #3498db;
+    }
+    .positive { color: #27ae60; }
+    .negative { color: #e74c3c; }
+    .info-box {
+        background: #e8f4fd;
+        border-left: 4px solid #3498db;
+        padding: 15px;
+        margin: 15px 0;
+        border-radius: 0 5px 5px 0;
+    }
+    .info-box strong {
+        color: #2980b9;
+    }
+    .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .summary-card {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .summary-card .value {
+        font-size: 28px;
+        font-weight: bold;
+        color: #2c3e50;
+    }
+    .summary-card .label {
+        color: #7f8c8d;
+        font-size: 14px;
+        margin-top: 5px;
+    }
+    .summary-card.positive .value { color: #27ae60; }
+    .summary-card.negative .value { color: #e74c3c; }
+    .back-link {
+        display: inline-block;
+        margin-bottom: 20px;
+        color: #3498db;
+        text-decoration: none;
+    }
+    .back-link:hover {
+        text-decoration: underline;
+    }
+    .no-data {
+        color: #95a5a6;
+        font-style: italic;
+        padding: 20px;
+        text-align: center;
+    }
+</style>
+
+<div class="fiscal-container">
+    <a href="{% url 'admin:core_immeuble_changelist' %}" class="back-link">&larr; Retour aux immeubles</a>
+
+    <div class="fiscal-header">
+        <h1>Bilan Fiscal {{ annee }}</h1>
+        <div class="subtitle">{{ immeuble.nom }} - {{ immeuble.ville }}</div>
+        <div class="subtitle">Régime : {{ immeuble.get_regime_fiscal_display }}</div>
+        <div class="year-selector">
+            <form method="get">
+                <label>Année : </label>
+                <select name="annee" onchange="this.form.submit()">
+                    {% for a in annees_disponibles %}
+                        <option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+    </div>
+
+    <!-- Résumé -->
+    <div class="summary-cards">
+        <div class="summary-card positive">
+            <div class="value">{{ bilan.revenus.loyers_bruts|floatformat:0 }} €</div>
+            <div class="label">Revenus bruts</div>
+        </div>
+        <div class="summary-card negative">
+            <div class="value">{{ bilan.resultat.total_charges|floatformat:0 }} €</div>
+            <div class="label">Total charges déductibles</div>
+        </div>
+        <div class="summary-card {% if bilan.resultat.resultat_foncier >= 0 %}positive{% else %}negative{% endif %}">
+            <div class="value">{{ bilan.resultat.resultat_foncier|floatformat:0 }} €</div>
+            <div class="label">Résultat foncier</div>
+        </div>
+    </div>
+
+    <!-- Intérêts et Assurances (calculés automatiquement) -->
+    <div class="section">
+        <h2>Intérêts et Assurances d'Emprunt (calculés automatiquement)</h2>
+
+        {% if credits_details %}
+        <div class="info-box">
+            <strong>Ces montants sont calculés automatiquement</strong> à partir des échéances de crédit enregistrées.
+            Ils correspondent aux intérêts et assurances réellement dus pour l'année {{ annee }}.
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Crédit</th>
+                    <th>Banque</th>
+                    <th class="amount">Échéances</th>
+                    <th class="amount">Intérêts</th>
+                    <th class="amount">Assurance</th>
+                    <th class="amount">Total déductible</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in credits_details %}
+                <tr>
+                    <td>{{ c.credit }}</td>
+                    <td>{{ c.banque }}</td>
+                    <td class="amount">{{ c.nb_echeances }}</td>
+                    <td class="amount">{{ c.interets|floatformat:2 }} €</td>
+                    <td class="amount">{{ c.assurance|floatformat:2 }} €</td>
+                    <td class="amount"><strong>{{ c.total|floatformat:2 }} €</strong></td>
+                </tr>
+                {% endfor %}
+                <tr class="total-row">
+                    <td colspan="3"><strong>TOTAL</strong></td>
+                    <td class="amount"><strong>{{ total_interets_credits|floatformat:2 }} €</strong></td>
+                    <td class="amount"><strong>{{ total_assurance_credits|floatformat:2 }} €</strong></td>
+                    <td class="amount"><strong>{{ bilan.charges.interets_emprunts|floatformat:2|add:bilan.charges.assurance_emprunt|floatformat:2 }} €</strong></td>
+                </tr>
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-data">Aucun crédit avec échéances pour cet immeuble en {{ annee }}.</p>
+        {% endif %}
+    </div>
+
+    <!-- Autres charges déductibles -->
+    <div class="section">
+        <h2>Autres Charges Déductibles (saisie manuelle)</h2>
+
+        {% if charges_par_type %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Type de charge</th>
+                    <th>Libellé</th>
+                    <th class="amount">Montant</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for type, charges in charges_par_type.items %}
+                    {% for charge in charges %}
+                    <tr>
+                        <td>{{ type }}</td>
+                        <td>{{ charge.libelle }}</td>
+                        <td class="amount">{{ charge.montant|floatformat:2 }} €</td>
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+                <tr class="total-row">
+                    <td colspan="2"><strong>TOTAL CHARGES MANUELLES</strong></td>
+                    <td class="amount"><strong>{{ bilan.charges.total_charges_deductibles|floatformat:2 }} €</strong></td>
+                </tr>
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-data">
+            Aucune charge manuelle saisie pour {{ annee }}.
+            <br><br>
+            <a href="{% url 'admin:core_chargefiscale_add' %}?immeuble={{ immeuble.id }}&annee={{ annee }}">
+                + Ajouter une charge fiscale
+            </a>
+        </p>
+        {% endif %}
+    </div>
+
+    <!-- Récapitulatif pour déclaration -->
+    <div class="section">
+        <h2>Récapitulatif pour Déclaration Fiscale {{ annee }}</h2>
+
+        <table>
+            <tbody>
+                <tr>
+                    <td><strong>Revenus bruts (loyers encaissés)</strong></td>
+                    <td class="amount positive"><strong>+ {{ bilan.revenus.loyers_bruts|floatformat:2 }} €</strong></td>
+                </tr>
+                <tr>
+                    <td>Intérêts d'emprunt</td>
+                    <td class="amount negative">- {{ bilan.charges.interets_emprunts|floatformat:2 }} €</td>
+                </tr>
+                <tr>
+                    <td>Assurance emprunt</td>
+                    <td class="amount negative">- {{ bilan.charges.assurance_emprunt|floatformat:2 }} €</td>
+                </tr>
+                <tr>
+                    <td>Autres charges déductibles</td>
+                    <td class="amount negative">- {{ bilan.charges.total_charges_deductibles|floatformat:2 }} €</td>
+                </tr>
+                <tr class="total-row">
+                    <td><strong>RÉSULTAT FONCIER</strong></td>
+                    <td class="amount {% if bilan.resultat.resultat_foncier >= 0 %}positive{% else %}negative{% endif %}">
+                        <strong>= {{ bilan.resultat.resultat_foncier|floatformat:2 }} €</strong>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        {% if bilan.resultat.resultat_foncier < 0 %}
+        <div class="info-box">
+            <strong>Déficit foncier :</strong> {{ bilan.resultat.deficit_reportable|floatformat:2 }} €
+            <br>
+            Ce déficit peut être imputé sur le revenu global (dans la limite de 10 700 €) ou reporté sur les revenus fonciers des 10 années suivantes.
+        </div>
+        {% endif %}
+    </div>
+
+    <div style="text-align: center; margin-top: 30px; color: #7f8c8d;">
+        <p>
+            <a href="{% url 'admin:core_immeuble_change' immeuble.id %}">Modifier l'immeuble</a> |
+            <a href="{% url 'dashboard_immeuble_detail' immeuble.id %}">Voir le dashboard complet</a> |
+            <a href="{% url 'admin:core_chargefiscale_add' %}?immeuble={{ immeuble.id }}&annee={{ annee }}">Ajouter une charge</a>
+        </p>
+    </div>
+</div>
+{% endblock %}

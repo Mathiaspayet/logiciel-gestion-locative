@@ -8,7 +8,7 @@
 
 **Quoi** : Application de gestion locative professionnelle pour propriétaires français.
 
-**Stack** : Django 6.0 + Python 3.11 + SQLite + ReportLab
+**Stack** : Django 6.0 + Python 3.14 + SQLite + ReportLab
 
 **Utilisateurs** : Propriétaires/Gestionnaires immobiliers (SCI, particuliers)
 
@@ -71,17 +71,21 @@ http://127.0.0.1:8000/admin/
 ```
 gestion_locative/
 ├── core/
-│   ├── models.py          ⭐ MODÈLES - Bail, BailTarification, Regularisation...
-│   ├── views.py           ⭐ VUES - Fonctions génération documents PDF
+│   ├── models.py          ⭐ MODÈLES - 18 modèles (Bail, BailTarification, CreditImmobilier...)
+│   ├── views.py           ⭐ VUES - Fonctions génération documents PDF + dashboards
 │   ├── pdf_generator.py   📄 GÉNÉRATEUR - Classe PDFGenerator
-│   ├── calculators.py     🧮 CALCULATEURS - Logique métier
-│   ├── admin.py           ⭐ ADMIN - Configuration interface + actions
-│   ├── urls.py            🔗 Routes
-│   └── migrations/        📂 Historique BDD (0011-0014 importants)
-├── settings.py            ⚙️ Configuration Django
+│   ├── calculators.py     🧮 CALCULATEURS - Logique métier baux
+│   ├── patrimoine_calculators.py  📊 CALCULATEURS - Patrimoine, rentabilité, crédits
+│   ├── exceptions.py      ❗ EXCEPTIONS - TarificationNotFoundError, etc.
+│   ├── admin.py           ⭐ ADMIN - 16+ classes admin + actions
+│   ├── urls.py            🔗 Routes (11 endpoints)
+│   └── migrations/        📂 Historique BDD (0011-0016 importants)
+├── gestion_locative/
+│   └── settings.py        ⚙️ Configuration Django
 ├── db.sqlite3             💾 BASE DE DONNÉES
 ├── README.md              📖 Doc utilisateur
 ├── DOCUMENTATION_TECHNIQUE.md  📚 Doc complète (LIRE EN PRIORITÉ)
+├── CHANGELOG.md           📝 Historique des modifications
 └── QUICK_START.md         ⚡ Ce fichier
 ```
 
@@ -366,8 +370,11 @@ Pour approfondir, consulter dans l'ordre :
    - Section 1-2 : Architecture & Modèles
    - Section 3 : Système historique tarifaire
    - Section 4 : Fonctions PDF (algorithmes)
-   - Section 9 : Debugging
-   - Section 10 : Évolutions futures
+   - Section 8 : Debugging
+   - Section 9 : Assistant Crédit Immobilier
+   - Section 10 : Dashboards Patrimoine
+   - Section 11 : Évolutions futures
+4. **CHANGELOG.md** - Historique des modifications
 
 ---
 
@@ -460,6 +467,6 @@ for bail in baux:
 
 ---
 
-**Dernière mise à jour** : Janvier 2026 (v2.0)
+**Dernière mise à jour** : Février 2026 (v2.1)
 **Difficulté de prise en main** : Moyenne (Django intermédiaire requis)
 **Temps pour être autonome** : 1 journée

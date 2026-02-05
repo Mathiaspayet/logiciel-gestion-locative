@@ -1,7 +1,7 @@
 # Documentation Technique - Système de Gestion Locative
 
-**Version** : 2.0 (Système d'historique tarifaire)
-**Dernière mise à jour** : Janvier 2026
+**Version** : 2.1 (Gestion Patrimoniale)
+**Dernière mise à jour** : Février 2026
 
 ---
 
@@ -16,6 +16,12 @@
 7. [Guide de Maintenance](#7-guide-de-maintenance)
 8. [Debugging et Troubleshooting](#8-debugging-et-troubleshooting)
 9. [Assistant Crédit Immobilier](#9-assistant-crédit-immobilier)
+10. [Dashboards Patrimoine](#10-dashboards-patrimoine) ⭐ NOUVEAU (v2.1)
+    - 10.1 Dashboard Patrimoine Global
+    - 10.2 Dashboard Détail Immeuble
+    - 10.3 Modèles Patrimoine
+    - 10.4 Bilan Fiscal par Immeuble
+11. [Évolutions Futures](#11-évolutions-futures)
 
 ---
 
@@ -23,11 +29,11 @@
 
 ### 1.1 Stack Technologique
 
-*   **Langage** : Python 3.11+
+*   **Langage** : Python 3.14+
 *   **Framework Web** : Django 6.0
 *   **Base de Données** : SQLite (développement) / PostgreSQL compatible
 *   **Génération PDF** : ReportLab
-*   **Interface Admin** : Django Admin avec Jazzmin
+*   **Interface Admin** : Django Admin avec Jazzmin 3.0.1
 *   **Templates** : Django Templates
 
 ### 1.2 Structure du Projet
@@ -36,18 +42,25 @@
 logiciel gestion locative/
 ├── gestion_locative/          # Projet Django principal
 │   ├── core/                  # Application principale
-│   │   ├── models.py          # Modèles de données
+│   │   ├── models.py          # Modèles de données (18 modèles)
 │   │   ├── views.py           # Vues et fonctions PDF
-│   │   ├── admin.py           # Configuration admin
-│   │   ├── urls.py            # Routes
-│   │   ├── pdf_generator.py  # Générateur de PDFs
-│   │   ├── calculators.py    # Calculateurs métier
-│   │   └── migrations/        # Migrations de base de données
-│   ├── settings.py            # Configuration Django
-│   ├── urls.py                # Routes principales
+│   │   ├── admin.py           # Configuration admin (16+ classes)
+│   │   ├── urls.py            # Routes (11 endpoints)
+│   │   ├── pdf_generator.py   # Générateur de PDFs (classe PDFGenerator)
+│   │   ├── calculators.py     # Calculateurs métier (BailCalculator)
+│   │   ├── patrimoine_calculators.py  # Calculateurs patrimoine
+│   │   ├── exceptions.py      # Exceptions personnalisées
+│   │   ├── templates/         # 9 templates HTML
+│   │   └── migrations/        # 16 migrations
+│   ├── gestion_locative/
+│   │   ├── settings.py        # Configuration Django
+│   │   └── urls.py            # Routes principales
+│   ├── manage.py              # CLI Django
 │   └── db.sqlite3             # Base de données (SQLite)
 ├── README.md                  # Documentation utilisateur
 ├── DOCUMENTATION_TECHNIQUE.md # Ce fichier
+├── QUICK_START.md             # Guide de démarrage rapide
+├── CHANGELOG.md               # Historique des modifications
 └── requirements.txt           # Dépendances Python
 ```
 
@@ -132,13 +145,16 @@ def generer_quittance_pdf(request, pk):
 
 ```
 Proprietaire
-    └── Immeuble
-            └── Local
-                    └── Bail ────────────┐
-                            ├── Occupant  │
-                            ├── Ajustement│
-                            ├── BailTarification ◄─── NOUVEAU (v2.0)
-                            └── Regularisation
+    └── Immeuble ─────────────────────────┐
+            │                              │
+            ├── Local                      ├── EstimationValeur (historique valeurs)
+            │       └── Bail               ├── CreditImmobilier
+            │               ├── Occupant   │       └── EcheanceCredit
+            │               ├── Ajustement ├── ChargeFiscale
+            │               ├── BailTarification ◄─── (v2.0)
+            │               └── Regularisation    ├── Amortissement
+            │                              │
+            └── VacanceLocative ───────────┘
 
 CleRepartition
     ├── QuotePart (tantièmes)
@@ -296,14 +312,21 @@ class BailTarification(models.Model):
 
 **Validation** :
 ```python
+# Validation basique dans le modèle (models.py)
 def clean(self):
     # 1. date_fin > date_debut
     if self.date_fin and self.date_fin <= self.date_debut:
         raise ValidationError("date_fin doit être > date_debut")
+    # 2. date_debut >= bail.date_debut
 
-    # 2. Pas de chevauchement avec autres tarifications
-    # 3. date_debut >= bail.date_debut
+# Validation des chevauchements dans le FormSet (admin.py)
+class BailTarificationFormSet(BaseInlineFormSet):
+    def clean(self):
+        # Vérifie les chevauchements entre TOUTES les tarifications
+        # du formulaire (y compris modifications non sauvegardées)
 ```
+
+> **Note v2.1** : La validation des chevauchements a été déplacée du modèle vers le FormSet admin pour permettre la modification simultanée de plusieurs tarifications (fermeture ancienne + création nouvelle en une seule sauvegarde).
 
 **Exemple de Données** :
 ```
@@ -581,6 +604,8 @@ loyer_prorata = montant_periode * (nb_jours_presence / nb_jours_periode)
 | 0012 | Jan 2026 | Création table BailTarification |
 | 0013 | Jan 2026 | Migration automatique données → BailTarification |
 | 0014 | Jan 2026 | Suppression champs obsolètes (loyer_hc, charges, taxes...) |
+| 0015 | Jan 2026 | Modèles patrimoine (EstimationValeur, CreditImmobilier, EcheanceCredit, ChargeFiscale, Amortissement, VacanceLocative) |
+| 0016 | Fév 2026 | Correction unique_together sur QuotePart |
 
 ### 5.2 Migration 0013 : Migration des Données
 
@@ -932,7 +957,45 @@ cp backups/db_backup_avant_tarif.sqlite3 gestion_locative/db.sqlite3
 python manage.py migrate
 ```
 
-### 8.5 Activer les Logs SQL
+### 8.5 Compatibilité Jazzmin / Django 6.0
+
+**Symptôme** :
+```
+TypeError at /admin/core/xxx/
+args or kwargs must be provided.
+Exception Location: jazzmin/templatetags/jazzmin.py, line 256
+```
+
+**Cause** : Django 6.0 a modifié `format_html()` pour exiger des arguments.
+
+**Solution** : Patch local de Jazzmin (en attendant une mise à jour officielle)
+
+1. Localiser le fichier :
+```bash
+# Windows (Python 3.14)
+C:\Users\<user>\AppData\Roaming\Python\Python314\site-packages\jazzmin\templatetags\jazzmin.py
+```
+
+2. Modifier ligne ~256-257 :
+```python
+# AVANT
+return format_html(html_str)
+
+# APRÈS
+# Patch pour Django 6.0: format_html() exige maintenant des arguments
+return mark_safe(html_str)
+```
+
+3. Supprimer le cache Python :
+```bash
+rm jazzmin/templatetags/__pycache__/jazzmin.cpython-*.pyc
+```
+
+4. Redémarrer le serveur Django.
+
+**Note** : `mark_safe` est déjà importé dans le fichier.
+
+### 8.6 Activer les Logs SQL
 
 **Dans `settings.py`** :
 ```python
@@ -1190,7 +1253,193 @@ JAZZMIN_SETTINGS = {
 
 ---
 
-## 10. Évolutions Futures
+## 10. Dashboards Patrimoine ⭐ NOUVEAU (v2.1)
+
+### 10.1 Dashboard Patrimoine Global
+
+**URL** : `/api/patrimoine/dashboard/`
+**Accès** : `@staff_member_required`
+
+**Indicateurs affichés** :
+- Valeur totale du patrimoine
+- Capital restant dû (tous crédits)
+- Valeur nette (valeur - CRD)
+- Cash-flow mensuel global
+- Nombre total de locaux
+
+**Graphiques** :
+- Répartition valeur par immeuble (camembert)
+- Projection sur 10 ans (courbes valeur, CRD, valeur nette)
+
+**Calculateurs utilisés** (`patrimoine_calculators.py`) :
+- `PatrimoineCalculator.get_valeur_actuelle()` - Dernière estimation ou prix achat
+- `PatrimoineCalculator.get_capital_restant_du()` - Somme CRD tous crédits
+- `RentabiliteCalculator.get_cashflow_mensuel()` - Loyers - mensualités crédits
+- `RentabiliteCalculator.get_rendement_brut()` - (Loyers annuels / Valeur) × 100
+
+### 10.2 Dashboard Détail Immeuble
+
+**URL** : `/api/patrimoine/immeuble/<id>/`
+**Accès** : `@staff_member_required`
+
+**30+ indicateurs organisés en sections** :
+
+**Section Patrimoine** :
+- Valeur actuelle, CRD, Valeur nette, Plus-value latente
+- Coût d'acquisition (prix + frais)
+
+**Section Surface** :
+- Surface totale, Prix/m² achat, Prix/m² actuel
+
+**Section Loyers** :
+- Loyers mensuels/annuels, Charges mensuelles
+- Nombre locaux loués/vacants
+
+**Section Rentabilité** :
+- Rendement brut, Rendement net
+- Cash-flow mensuel/annuel
+
+**Section Ratios** :
+- Taux d'occupation, Taux de vacance
+- Ratio d'endettement
+
+**Détails par local** :
+- Liste des locaux avec statut, loyer, surface
+
+**Crédits associés** :
+- Liste des crédits avec CRD, mensualité, date fin
+
+**Optimisation requêtes** :
+```python
+immeuble = get_object_or_404(
+    Immeuble.objects.prefetch_related(
+        'credits', 'locaux__baux__tarifications', 'locaux__baux__occupants',
+        'estimations', 'charges_fiscales', 'locaux__vacances'
+    ),
+    pk=immeuble_id
+)
+```
+
+### 10.3 Modèles Patrimoine
+
+**EstimationValeur** :
+```python
+immeuble = ForeignKey(Immeuble)
+date_estimation = DateField
+valeur = DecimalField  # En euros
+source = CharField  # MANUELLE, AGENT, NOTAIRE, DVF
+notes = TextField
+```
+
+**CreditImmobilier** :
+```python
+immeuble = ForeignKey(Immeuble)
+banque = CharField
+type_credit = CharField  # AMORTISSABLE, IN_FINE
+capital_emprunte = DecimalField
+taux_interet = DecimalField
+duree_mois = IntegerField
+date_debut = DateField
+assurance_mensuelle = DecimalField
+
+# Properties calculées
+@property def mensualite  # Mensualité totale (capital + intérêts + assurance)
+@property def capital_restant_du  # CRD à aujourd'hui
+```
+
+**EcheanceCredit** :
+```python
+credit = ForeignKey(CreditImmobilier)
+numero_echeance = IntegerField
+date_echeance = DateField
+capital_rembourse = DecimalField
+interets = DecimalField
+assurance = DecimalField
+capital_restant_du = DecimalField
+payee = BooleanField
+```
+
+**ChargeFiscale** :
+```python
+immeuble = ForeignKey(Immeuble)
+type_charge = CharField  # INTERETS, ASSURANCE_EMPRUNT, ASSURANCE_PNO, TRAVAUX, TAXE_FONCIERE, etc.
+annee = IntegerField
+montant = DecimalField
+libelle = CharField
+justificatif = FileField  # Optionnel
+```
+
+**VacanceLocative** :
+```python
+local = ForeignKey(Local)
+date_debut = DateField
+date_fin = DateField (nullable)
+motif = CharField  # TRAVAUX, RECHERCHE, DELIBERE, AUTRE
+notes = TextField
+
+@property def duree_jours  # Nombre de jours de vacance
+```
+
+### 10.4 Bilan Fiscal par Immeuble
+
+**URL** : `/api/fiscal/immeuble/<id>/`
+**Accès** : `@staff_member_required`
+
+**Description** : Génère un récapitulatif fiscal annuel pour un immeuble, calculant automatiquement les charges déductibles.
+
+**Calculs automatiques** :
+
+1. **Intérêts d'emprunt** (depuis `EcheanceCredit`)
+```python
+echeances_annee = credit.echeances.filter(
+    date_echeance__gte=date(annee, 1, 1),
+    date_echeance__lte=date(annee, 12, 31)
+)
+total_interets = sum(e.interets for e in echeances_annee)
+```
+
+2. **Assurance emprunt** (depuis `EcheanceCredit`)
+```python
+total_assurance = sum(e.assurance for e in echeances_annee)
+```
+
+3. **Autres charges** (depuis `ChargeFiscale`)
+```python
+charges_manuelles = immeuble.charges_fiscales.filter(annee=annee)
+```
+
+**Récapitulatif fiscal** :
+```
+Revenus bruts (loyers encaissés)     + X €
+Intérêts d'emprunt                   - X €
+Assurance emprunt                    - X €
+Autres charges déductibles           - X €
+────────────────────────────────────────────
+RÉSULTAT FONCIER                     = X €
+```
+
+**Si déficit foncier** :
+- Affichage du montant reportable
+- Rappel des règles fiscales (limite 10 700€, report 10 ans)
+
+**Types de charges fiscales supportés** (`ChargeFiscale.type_charge`) :
+- `INTERETS` - Intérêts d'emprunt (calcul automatique si EcheanceCredit)
+- `ASSURANCE_EMPRUNT` - Assurance emprunt (calcul automatique si EcheanceCredit)
+- `ASSURANCE_PNO` - Assurance propriétaire non occupant
+- `TRAVAUX` - Travaux déductibles
+- `TAXE_FONCIERE` - Taxe foncière
+- `FRAIS_GESTION` - Frais de gestion
+- `AUTRE` - Autres charges déductibles
+
+**Accès depuis l'admin** :
+1. Admin → Immeubles → Sélectionner un immeuble
+2. Actions → "Voir bilan fiscal"
+
+**Template** : `core/templates/admin/core/bilan_fiscal.html`
+
+---
+
+## 11. Évolutions Futures
 
 ### 10.1 Améliorations Techniques
 
@@ -1509,4 +1758,4 @@ python manage.py shell              # Console interactive
 ---
 
 **Document maintenu par** : Équipe de développement
-**Dernière révision** : Janvier 2026 (v2.0 - Historique tarifaire)
+**Dernière révision** : Février 2026 (v2.1 - Gestion Patrimoniale)

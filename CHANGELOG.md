@@ -1,5 +1,103 @@
 # Changelog - Gestion Locative
 
+## [2026-02-05] - Audit et Corrections v2.1
+
+### 🎯 Objectif
+Audit complet de l'application et corrections des bugs identifiés.
+
+### ✨ Nouvelle Fonctionnalité
+
+#### Bilan Fiscal par Immeuble
+Nouvel outil pour générer un bilan fiscal annuel par immeuble, calculant automatiquement les intérêts et assurances déductibles à partir des échéances de crédit.
+
+**Fonctionnalités** :
+- Calcul automatique des intérêts d'emprunt déductibles depuis `EcheanceCredit`
+- Calcul automatique des assurances emprunt déductibles
+- Affichage des charges fiscales manuelles (`ChargeFiscale`)
+- Récapitulatif pour déclaration fiscale (revenus - charges = résultat foncier)
+- Sélecteur d'année fiscale
+- Détection du déficit foncier reportable
+
+**Accès** :
+- Action admin sur liste Immeubles → "Voir bilan fiscal"
+- URL directe : `/api/fiscal/immeuble/<id>/`
+
+**Fichiers** :
+- `core/views.py` - Vue `bilan_fiscal_immeuble()`
+- `core/templates/admin/core/bilan_fiscal.html` - Template
+- `core/urls.py` - Route ajoutée
+- `core/admin.py` - Action `voir_bilan_fiscal` sur ImmeubleAdmin
+
+### 🐛 Corrections de Bugs
+
+#### 1. Validation Tarifications (Bug Critique)
+**Problème** : Impossible d'ajouter une nouvelle tarification et fermer l'ancienne en même temps.
+- L'erreur "Chevauchement avec tarification active" s'affichait même sans chevauchement réel.
+- La validation lisait depuis la base de données au lieu du formulaire.
+
+**Solution** : Migration de la validation vers un FormSet personnalisé (`BailTarificationFormSet`) qui voit toutes les modifications en cours.
+
+**Fichiers modifiés** :
+- `core/models.py` - Simplification de `clean()` (validation basique uniquement)
+- `core/admin.py` - Ajout de `BailTarificationFormSet` avec validation complète
+
+#### 2. Meta Duplicate QuotePart (Bug Critique)
+**Problème** : Deux `class Meta` dans le modèle `QuotePart`, la contrainte `unique_together` était ignorée.
+
+**Solution** : Fusion des deux Meta + nouvelle migration.
+
+**Fichiers modifiés** :
+- `core/models.py` - Fusion des Meta
+- `core/migrations/0016_alter_quotepart_unique_together.py` - Nouvelle migration
+
+#### 3. Compatibilité Jazzmin / Django 6.0
+**Problème** : Erreur `TypeError: args or kwargs must be provided` sur la page Échéances Crédit.
+- Django 6.0 a changé le comportement de `format_html()`.
+
+**Solution** : Patch local du fichier Jazzmin (`jazzmin/templatetags/jazzmin.py`).
+- Ligne 256-257 : Remplacé `format_html(html_str)` par `mark_safe(html_str)`
+- **Important** : Supprimer le cache `.pyc` après modification : `rm jazzmin/templatetags/__pycache__/jazzmin.cpython-*.pyc`
+
+#### 4. Bilan Fiscal - Attribut Banque (Bug Mineur)
+**Problème** : Erreur `'CreditImmobilier' object has no attribute 'banque'` sur la page bilan fiscal.
+
+**Cause** : Le champ s'appelle `nom_banque` dans le modèle, pas `banque`.
+
+**Solution** : Correction dans `views.py` ligne 948.
+
+**Fichiers modifiés** :
+- `core/views.py` - `credit.banque` → `credit.nom_banque`
+
+### ✨ Améliorations
+
+#### Admin Standalone pour Ajustement et QuotePart
+**Avant** : Ces modèles n'étaient accessibles que via les inlines.
+**Maintenant** : Nouveaux `AjustementAdmin` et `QuotePartAdmin` pour gestion globale.
+
+**Fichiers modifiés** :
+- `core/admin.py` - Ajout de 2 nouvelles classes admin
+
+### 📊 Audit Réalisé
+
+**Éléments vérifiés** :
+- ✅ 18 modèles - Cohérents
+- ✅ 16+ classes Admin - Complètes
+- ✅ 10 vues + 2 dashboards - Fonctionnelles
+- ✅ 11 routes URL - Bien configurées
+- ✅ 9 templates - Tous présents
+- ✅ PDFGenerator - Import OK
+- ✅ Calculateurs patrimoine - Import OK
+- ✅ Optimisations N+1 - prefetch_related en place
+
+### 📝 Documentation Mise à Jour
+
+- `README.md` - Ajout modèles patrimoine, suppression API REST, changelog v2.1
+- `DOCUMENTATION_TECHNIQUE.md` - Section 10 Dashboards, validation FormSet, migrations 0015-0016
+- `QUICK_START.md` - Structure projet mise à jour, Python 3.14
+- `CHANGELOG.md` - Cette entrée
+
+---
+
 ## [2026-01-21] - Assistant Crédit Immobilier Intelligent
 
 ### 🎯 Objectif

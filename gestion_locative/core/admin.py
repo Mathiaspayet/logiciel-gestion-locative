@@ -4,6 +4,7 @@ from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.db.models import Sum, Count, Q
 from django.http import HttpResponse
+from django.forms import BaseInlineFormSet, ValidationError
 from datetime import date
 import zipfile
 from io import BytesIO
@@ -124,8 +125,56 @@ class RegularisationInline(admin.TabularInline):
     fields = ('date_creation', 'date_debut', 'date_fin', 'montant_reel', 'montant_provisions', 'solde', 'payee', 'date_paiement', 'notes')
     can_delete = False # On garde l'historique
 
+
+class BailTarificationFormSet(BaseInlineFormSet):
+    """FormSet personnalisé pour valider les chevauchements de tarifications.
+
+    Contrairement à la validation dans le modèle, ce formset voit TOUTES les
+    tarifications en cours de modification (y compris celles pas encore sauvegardées).
+    """
+
+    def clean(self):
+        super().clean()
+
+        # Collecter toutes les tarifications valides (non supprimées)
+        tarifications = []
+        for form in self.forms:
+            if form.cleaned_data and not form.cleaned_data.get('DELETE', False):
+                tarifications.append({
+                    'date_debut': form.cleaned_data.get('date_debut'),
+                    'date_fin': form.cleaned_data.get('date_fin'),
+                    'form': form,
+                })
+
+        # Vérifier les chevauchements entre tarifications
+        for i, t1 in enumerate(tarifications):
+            if not t1['date_debut']:
+                continue
+            for t2 in tarifications[i + 1:]:
+                if not t2['date_debut']:
+                    continue
+                if self._periods_overlap(t1, t2):
+                    raise ValidationError(
+                        f"Chevauchement détecté entre la tarification du "
+                        f"{t1['date_debut'].strftime('%d/%m/%Y')} et celle du "
+                        f"{t2['date_debut'].strftime('%d/%m/%Y')}."
+                    )
+
+    def _periods_overlap(self, t1, t2):
+        """Vérifie si deux périodes se chevauchent."""
+        # Utiliser une date très lointaine pour les périodes sans fin
+        far_future = date(9999, 12, 31)
+        t1_fin = t1['date_fin'] if t1['date_fin'] else far_future
+        t2_fin = t2['date_fin'] if t2['date_fin'] else far_future
+
+        # Deux périodes se chevauchent si elles ne sont PAS disjointes
+        # Disjointes si: t1 finit avant t2 commence OU t2 finit avant t1 commence
+        return not (t1_fin < t2['date_debut'] or t2_fin < t1['date_debut'])
+
+
 class BailTarificationInline(admin.TabularInline):
     model = BailTarification
+    formset = BailTarificationFormSet
     extra = 0
     fields = ('get_statut', 'date_debut', 'date_fin', 'loyer_hc', 'charges', 'taxes', 'indice_reference', 'trimestre_reference', 'reason', 'created_at')
     readonly_fields = ('created_at', 'get_statut')
@@ -459,6 +508,18 @@ class ImmeubleAdmin(admin.ModelAdmin):
         return mark_safe(f'<span style="color: {color}; font-weight: bold;">{cashflow:,.0f} €/mois</span>'.replace(',', ' '))
     get_cashflow.short_description = "Cash-flow"
 
+    actions = ['voir_bilan_fiscal']
+
+    @admin.action(description='📊 Voir Bilan Fiscal')
+    def voir_bilan_fiscal(self, request, queryset):
+        """Redirige vers le bilan fiscal de l'immeuble sélectionné."""
+        if queryset.count() != 1:
+            self.message_user(request, "Veuillez sélectionner un seul immeuble.", level='warning')
+            return
+        immeuble = queryset.first()
+        from django.shortcuts import redirect
+        return redirect('bilan_fiscal_immeuble', immeuble_id=immeuble.pk)
+
 @admin.register(Occupant)
 class OccupantAdmin(admin.ModelAdmin):
     list_display = ('nom', 'prenom', 'role', 'bail')
@@ -479,6 +540,33 @@ class DepenseAdmin(admin.ModelAdmin):
 class ConsommationAdmin(admin.ModelAdmin):
     list_display = ('local', 'cle_repartition', 'date_debut', 'date_releve', 'index_debut', 'index_fin', 'quantite')
     list_filter = ('local__immeuble', 'cle_repartition', 'date_releve')
+
+@admin.register(Ajustement)
+class AjustementAdmin(admin.ModelAdmin):
+    """Admin standalone pour gérer tous les ajustements."""
+    list_display = ('bail', 'date', 'libelle', 'montant', 'get_immeuble')
+    list_filter = ('bail__local__immeuble', 'date')
+    search_fields = ('libelle', 'bail__local__numero_porte')
+    date_hierarchy = 'date'
+    ordering = ['-date']
+
+    def get_immeuble(self, obj):
+        return obj.bail.local.immeuble.nom
+    get_immeuble.short_description = "Immeuble"
+    get_immeuble.admin_order_field = 'bail__local__immeuble__nom'
+
+@admin.register(QuotePart)
+class QuotePartAdmin(admin.ModelAdmin):
+    """Admin standalone pour gérer toutes les quote-parts."""
+    list_display = ('local', 'cle', 'valeur', 'get_immeuble')
+    list_filter = ('cle__immeuble', 'cle')
+    search_fields = ('local__numero_porte', 'cle__nom')
+    ordering = ['cle__immeuble', 'cle', 'local']
+
+    def get_immeuble(self, obj):
+        return obj.cle.immeuble.nom
+    get_immeuble.short_description = "Immeuble"
+    get_immeuble.admin_order_field = 'cle__immeuble__nom'
 
 @admin.register(BailTarification)
 class BailTarificationAdmin(admin.ModelAdmin):

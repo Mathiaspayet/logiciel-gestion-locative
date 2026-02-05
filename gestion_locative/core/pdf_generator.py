@@ -387,10 +387,10 @@ class PDFGenerator:
 
             draw_line("TOTAL À PAYER", total, bold=True)
 
-            # Date limite
+            # Date limite de paiement : début de la période (échéance à terme à échoir)
             y -= 1*cm
             self.p.setFont("Helvetica-Bold", 10)
-            date_limite = periode_fin  # Ou current_date selon votre logique
+            date_limite = current_date  # Paiement dû au début de la période
             self.p.drawString(2*cm, y, f"À payer avant le : {self._format_date(date_limite)}")
 
             self.p.showPage()

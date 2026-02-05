@@ -114,13 +114,18 @@ class Bail(models.Model):
     # === TARIFICATION HISTORY METHODS ===
 
     def get_tarification_at(self, target_date):
-        """Récupère la tarification active à une date donnée."""
+        """
+        Récupère la tarification active à une date donnée.
+
+        Retourne la tarification la plus récente (date_debut la plus proche)
+        qui couvre la date cible.
+        """
         from django.db.models import Q
         return self.tarifications.filter(
             date_debut__lte=target_date
         ).filter(
             Q(date_fin__gte=target_date) | Q(date_fin__isnull=True)
-        ).first()
+        ).order_by('-date_debut').first()
 
     def get_tarifications_for_period(self, start_date, end_date):
         """Récupère toutes les tarifications qui chevauchent une période."""
@@ -259,30 +264,19 @@ class BailTarification(models.Model):
         return f"{self.bail.local.numero_porte} - Du {self.date_debut.strftime('%d/%m/%Y')} au {date_fin_str}"
 
     def clean(self):
-        """Validation pour éviter les chevauchements et incohérences."""
+        """Validation basique (cohérence des dates uniquement).
+
+        Note: La validation des chevauchements est faite au niveau du formset
+        dans l'admin pour pouvoir voir toutes les modifications en cours.
+        """
         from django.core.exceptions import ValidationError
-        from datetime import date
         errors = {}
 
         # 1. date_fin > date_debut
         if self.date_fin and self.date_fin <= self.date_debut:
             errors['date_fin'] = "La date de fin doit être postérieure à la date de début."
 
-        # 2. Vérifier les chevauchements
-        if self.bail_id:
-            overlapping = BailTarification.objects.filter(bail=self.bail).exclude(pk=self.pk)
-            for other in overlapping:
-                if other.date_fin is None:
-                    if self.date_fin is None or self.date_debut <= other.date_debut:
-                        errors['date_debut'] = f"Chevauchement avec tarification active du {other.date_debut.strftime('%d/%m/%Y')}."
-                        break
-                else:
-                    self_fin = self.date_fin if self.date_fin else date(9999, 12, 31)
-                    if not (self_fin < other.date_debut or self.date_debut > other.date_fin):
-                        errors['date_debut'] = f"Chevauchement avec période {other.date_debut.strftime('%d/%m/%Y')} - {other.date_fin.strftime('%d/%m/%Y')}."
-                        break
-
-        # 3. Date début >= début du bail
+        # 2. Date début >= début du bail
         if self.bail_id and self.bail.date_debut:
             if self.date_debut < self.bail.date_debut:
                 errors['date_debut'] = "La tarification ne peut pas commencer avant le début du bail."
@@ -319,14 +313,12 @@ class QuotePart(models.Model):
     valeur = models.DecimalField(max_digits=10, decimal_places=2, help_text="Nombre de tantièmes ou m² pour ce local")
 
     class Meta:
-        unique_together = ('cle', 'local') # Un local ne peut apparaître qu'une fois par clé
+        unique_together = ('cle', 'local')  # Un local ne peut apparaître qu'une fois par clé
+        verbose_name = "Quote-part"
+        verbose_name_plural = "Quote-parts"
 
     def __str__(self):
         return f"{self.local.numero_porte} : {self.valeur}"
-
-    class Meta:
-        verbose_name = "Quote-part"
-        verbose_name_plural = "Quote-parts"
 
 class Depense(models.Model):
     """Une facture payée par le propriétaire, à répartir."""

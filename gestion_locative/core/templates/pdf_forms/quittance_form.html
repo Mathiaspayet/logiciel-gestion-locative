@@ -1,8 +1,8 @@
 {% extends "pdf_forms/base_form.html" %}
 
-{% block title %}Quittance de Loyer{% endblock %}
+{% block title %}{% if type_document == 'avis_echeance' %}Avis d'Échéance{% else %}Quittance de Loyer{% endif %}{% endblock %}
 
-{% block header_title %}Quittance de Loyer{% endblock %}
+{% block header_title %}{% if type_document == 'avis_echeance' %}Avis d'Échéance{% else %}Quittance de Loyer{% endif %}{% endblock %}
 {% block header_subtitle %}{{ bail.local.numero_porte }} - {{ bail.local.immeuble.nom }}{% endblock %}
 
 {% block info_boxes %}
@@ -17,7 +17,7 @@
 
 {% block form_content %}
 <div class="form-group">
-    <label>Sélectionnez les périodes à inclure dans la quittance :</label>
+    <label>Sélectionnez les périodes à inclure dans {% if type_document == 'avis_echeance' %}l'avis d'échéance{% else %}la quittance{% endif %} :</label>
     <small>Maintenez Ctrl (Windows) ou Cmd (Mac) pour sélectionner plusieurs périodes</small>
 
     <div style="margin-top: 12px; max-height: 300px; overflow-y: auto; border: 2px solid #e9ecef; border-radius: 6px; padding: 8px;">
@@ -31,14 +31,14 @@
 </div>
 
 <script>
-    // Auto-check la période actuelle
+    // Auto-check la période la plus récente (premier élément de la liste)
     document.addEventListener('DOMContentLoaded', function() {
         const checkboxes = document.querySelectorAll('input[name="periodes"]');
         if (checkboxes.length > 0) {
-            checkboxes[checkboxes.length - 1].checked = true;
+            checkboxes[0].checked = true;
         }
     });
 </script>
 {% endblock %}
 
-{% block submit_button %}📄 Générer la Quittance{% endblock %}
+{% block submit_button %}📄 {% if type_document == 'avis_echeance' %}Générer l'Avis d'Échéance{% else %}Générer la Quittance{% endif %}{% endblock %}
