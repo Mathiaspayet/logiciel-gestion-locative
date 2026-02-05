@@ -18,7 +18,22 @@
       "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
       "Bash(gh auth login:*)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial commit - Logiciel de gestion locative\n\nApplication Django complète pour la gestion de biens immobiliers locatifs:\n- Gestion des propriétaires, immeubles, lots et baux\n- Suivi des loyers et régularisation des charges\n- Calcul automatique des quittances\n- Interface d''administration moderne\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(gh repo create:*)",
+      "Bash(pip install:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nV3 - Extension Gestion de Patrimoine Immobilier\n\nNouvelles fonctionnalités :\n- Suivi des acquisitions \\(prix, frais notaire/agence, date\\)\n- Gestion des crédits immobiliers avec génération d''échéancier\n- Estimations de valeur des immeubles\n- Charges fiscales déductibles \\(intérêts, travaux, taxes...\\)\n- Amortissements pour LMNP\n- Vacances locatives\n\nCalculateurs :\n- PatrimoineCalculator : valeur brute/nette, capital restant dû\n- RentabiliteCalculator : rendements brut/net, cash-flow\n- FiscaliteCalculator : bilan fiscal annuel \\(déclaration 2044\\)\n- RatiosCalculator : taux d''endettement, taux de vacance\n- CreditGenerator : génération automatique des échéanciers\n\nInterface Admin :\n- Dashboard patrimoine avec graphiques Chart.js\n- Colonnes calculées dans ImmeubleAdmin\n- Actions admin pour générer les échéanciers\n- Configuration Jazzmin avec icônes et menu personnalisé\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git tag:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)",
+      "Bash(python3:*)",
+      "Bash(pip show:*)",
+      "Bash(pip index:*)",
+      "Bash(findstr:*)",
+      "Bash(del /s /q \"C:\\\\Users\\\\mathi\\\\AppData\\\\Roaming\\\\Python\\\\Python314\\\\site-packages\\\\jazzmin\\\\templatetags\\\\__pycache__\\\\*jazzmin*\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAudit v2.1 - Bilan Fiscal et corrections bugs\n\nNouvelles fonctionnalités:\n- Bilan fiscal par immeuble avec calcul auto des intérêts/assurances\n- Dashboard détail immeuble \\(30+ indicateurs\\)\n- Action admin \"Voir bilan fiscal\" sur Immeubles\n\nCorrections de bugs:\n- Validation tarifications: déplacée vers FormSet \\(chevauchements\\)\n- QuotePart: fusion Meta classes + migration 0016\n- Bilan fiscal: correction attribut nom_banque\n- Jazzmin/Django 6.0: patch documenté \\(format_html → mark_safe\\)\n\nDocumentation mise à jour:\n- CHANGELOG.md: fonctionnalités et corrections\n- DOCUMENTATION_TECHNIQUE.md: section 10.4 Bilan Fiscal, troubleshooting Jazzmin\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nSauvegarde settings locaux Claude\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ],
     "deny": [],
     "ask": []
