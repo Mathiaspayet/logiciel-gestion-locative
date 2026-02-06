@@ -1,0 +1,14 @@
+.git
+.gitignore
+*.md
+__pycache__
+*.pyc
+*.pyo
+.vscode
+.idea
+*.bat
+install.py
+gestion_locative/db.sqlite3
+gestion_locative/db*.sqlite3*
+gestion_locative/logs/
+.env

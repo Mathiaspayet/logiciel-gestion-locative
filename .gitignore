@@ -10,6 +10,13 @@ db.sqlite3-journal
 # Dossiers de médias (Factures uploadées, etc.)
 media/
 
+# Static files collectés (générés par collectstatic)
+staticfiles/
+
+# Docker & env
+.env
+logs/
+
 # Environnement virtuel & IDE
 venv/
 env/

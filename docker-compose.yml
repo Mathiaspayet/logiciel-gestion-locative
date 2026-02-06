@@ -1,4 +1,7 @@
-version: '3.8'
+# ============================================================
+# Docker Compose - Développement local
+# Usage: docker compose up --build
+# ============================================================
 
 services:
   gestion-locative:
@@ -7,8 +10,13 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     volumes:
-      # IMPORTANT : On lie le fichier de base de données du NAS vers le conteneur
-      # pour que les données soient sauvegardées.
-      - ./gestion_locative/db.sqlite3:/app/gestion_locative/db.sqlite3
-      # Si vous ajoutez plus tard l'upload de fichiers (factures...), ajoutez une ligne pour /media
+      # Base de données persistante
+      - db-data:/app
+      # Logs
+      - ./logs:/app/logs
+
+volumes:
+  db-data:

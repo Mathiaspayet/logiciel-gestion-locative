@@ -1,0 +1,47 @@
+# ============================================================
+# Docker Compose - Déploiement Synology NAS (DS218+)
+# ============================================================
+#
+# INSTALLATION SUR LE NAS :
+# 1. Copier ce fichier sur le NAS : /volume1/docker/gestion-locative/
+# 2. Créer le fichier .env à côté (voir .env.example)
+# 3. Lancer : docker compose -f docker-compose.synology.yml up -d
+#
+# L'image est automatiquement mise à jour par Watchtower.
+# ============================================================
+
+services:
+  gestion-locative:
+    image: ghcr.io/${GITHUB_REPOSITORY:-mathiaspayet/logiciel-gestion-locative}:latest
+    container_name: gestion_locative
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Base de données SQLite persistante sur le NAS
+      - gestion-db:/app
+      # Logs sur le NAS
+      - /volume1/docker/gestion-locative/logs:/app/logs
+
+  # Watchtower : surveille GHCR et met à jour automatiquement
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      # Vérifier les mises à jour toutes les 5 minutes
+      WATCHTOWER_POLL_INTERVAL: 300
+      # Nettoyer les anciennes images
+      WATCHTOWER_CLEANUP: "true"
+      # Uniquement surveiller notre conteneur
+      WATCHTOWER_SCOPE: "gestion-locative"
+    labels:
+      - "com.centurylinklabs.watchtower.scope=gestion-locative"
+
+volumes:
+  gestion-db:
+    driver: local
