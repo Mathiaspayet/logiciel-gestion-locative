@@ -10,6 +10,7 @@ from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.db.models import Q
 from django.middleware.csrf import get_token
+from django.contrib.admin.views.decorators import staff_member_required
 
 from .models import Immeuble, Bail, Local
 from .pdf_generator import PDFGenerator
@@ -109,6 +110,7 @@ def generer_periodes_disponibles(bail, nb_periodes=None):
 # VUES PDF (Refactorisées)
 # ============================================================================
 
+@staff_member_required
 def generer_quittance_pdf(request, pk):
     """
     Génère une quittance de loyer pour un bail.
@@ -173,6 +175,7 @@ def generer_quittance_pdf(request, pk):
         return HttpResponse(f"Erreur: {str(e)}", status=500)
 
 
+@staff_member_required
 def generer_avis_echeance_pdf(request, pk):
     """
     Génère un avis d'échéance pour un bail.
@@ -234,6 +237,7 @@ def generer_avis_echeance_pdf(request, pk):
 # VUES PDF REFACTORISÉES - RÉGULARISATION
 # ============================================================================
 
+@staff_member_required
 def generer_regularisation_pdf(request, pk):
     """
     Génère le décompte de régularisation de charges sur une période donnée.
@@ -296,6 +300,7 @@ def generer_regularisation_pdf(request, pk):
 # VUES PDF REFACTORISÉES - SOLDE DE TOUT COMPTE
 # ============================================================================
 
+@staff_member_required
 def generer_solde_tout_compte_pdf(request, pk):
     """
     Génère l'arrêté de compte de fin de bail (Solde de tout compte).
@@ -385,6 +390,7 @@ def fetch_insee_indices(url, limit=8):
     return indices
 
 
+@staff_member_required
 def generer_revision_loyer_pdf(request, pk):
     """
     Génère le courrier de révision de loyer et redirige vers assistant si update_bail.
@@ -489,6 +495,7 @@ def generer_revision_loyer_pdf(request, pk):
 # ASSISTANT CRÉATION TARIFICATION (après révision)
 # ============================================================================
 
+@staff_member_required
 def creer_tarification_from_revision(request, pk):
     """
     Assistant de création de tarification suite à une révision IRL/ILC.
@@ -573,9 +580,6 @@ def creer_tarification_from_revision(request, pk):
 # ============================================================================
 # DASHBOARD PATRIMOINE
 # ============================================================================
-
-from django.contrib.admin.views.decorators import staff_member_required
-
 
 @staff_member_required
 def dashboard_patrimoine(request):
