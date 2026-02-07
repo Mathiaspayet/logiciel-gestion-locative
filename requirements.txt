@@ -3,3 +3,4 @@ reportlab
 django-jazzmin
 python-dateutil
 gunicorn
+whitenoise
