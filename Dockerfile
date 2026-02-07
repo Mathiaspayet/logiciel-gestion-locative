@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY gestion_locative/ /app/
 
 # Créer les dossiers nécessaires
-RUN mkdir -p /app/logs /app/staticfiles
+RUN mkdir -p /app/logs /app/staticfiles /app/data
 
 # Collecter les fichiers statiques au build
 RUN DJANGO_SECRET_KEY=build-placeholder \

@@ -74,30 +74,13 @@ sudo mkdir -p /volume1/docker/gestion-locative/logs
 
 ## 3. Configurer GitHub
 
-### 3.1 Merger la branche dans main
-
-Sur GitHub.com :
-
-1. Va sur ton repo → **Pull requests** → **New pull request**
-2. Sélectionne `claude/review-rental-management-app-Cb5jP` → `main`
-3. Clique **Create pull request** puis **Merge**
-
-Ou en ligne de commande depuis ton PC :
-
-```bash
-git checkout main
-git pull origin main
-git merge claude/review-rental-management-app-Cb5jP
-git push origin main
-```
-
-### 3.2 Vérifier que GitHub Actions a tourné
+### 3.1 Vérifier que GitHub Actions a tourné
 
 1. Va sur ton repo GitHub → onglet **Actions**
 2. Tu devrais voir un workflow "Build & Deploy" en cours ou terminé
-3. Attends qu'il soit vert (✓)
+3. Attends qu'il soit vert (&#10003;)
 
-> **C'est quoi ?** À chaque push sur `main`, GitHub construit automatiquement
+> **C'est quoi ?** À chaque push sur `master`, GitHub construit automatiquement
 > l'image Docker et la publie sur GitHub Container Registry (GHCR).
 
 ### 3.3 Rendre le package accessible
@@ -162,8 +145,15 @@ DJANGO_SECRET_KEY=colle-ta-cle-secrete-ici
 # Mode production
 DJANGO_DEBUG=False
 
+# Chemin de la base de données SQLite (dans le volume persistant)
+DJANGO_DB_PATH=/app/data/db.sqlite3
+
 # Ton IP NAS + le nom Tailscale (on le configurera après)
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.XX
+
+# Origines CSRF autorisées (nécessaire derrière un reverse proxy)
+# Adapter plus tard avec ton domaine / IP du NAS en HTTPS
+DJANGO_CSRF_TRUSTED_ORIGINS=https://192.168.1.XX,https://gestion.local
 
 # Workers Gunicorn (2 est bien pour le DS218+)
 GUNICORN_WORKERS=2
@@ -366,8 +356,8 @@ sudo docker compose restart gestion-locative
 git add .
 git commit -m "Ma modification"
 
-# 3. Push sur main
-git push origin main
+# 3. Push sur master
+git push origin master
 ```
 
 ### Ce qui se passe automatiquement
@@ -402,11 +392,11 @@ sudo docker logs watchtower --tail 20
 
 ### Sauvegarder la base de données
 
-La base SQLite est dans le volume Docker. Pour la sauvegarder :
+La base SQLite est dans le volume Docker `/app/data/`. Pour la sauvegarder :
 
 ```bash
 # Depuis le NAS en SSH
-sudo docker cp gestion_locative:/app/db.sqlite3 /volume1/homes/admin/backup_gestion_$(date +%Y%m%d).sqlite3
+sudo docker cp gestion_locative:/app/data/db.sqlite3 /volume1/homes/admin/backup_gestion_$(date +%Y%m%d).sqlite3
 ```
 
 ### Automatiser la sauvegarde
@@ -421,7 +411,7 @@ Dans DSM → **Panneau de configuration** → **Planificateur de tâches** :
 #!/bin/bash
 BACKUP_DIR="/volume1/homes/admin/backups"
 mkdir -p "$BACKUP_DIR"
-docker cp gestion_locative:/app/db.sqlite3 "$BACKUP_DIR/gestion_$(date +%Y%m%d_%H%M).sqlite3"
+docker cp gestion_locative:/app/data/db.sqlite3 "$BACKUP_DIR/gestion_$(date +%Y%m%d_%H%M).sqlite3"
 # Garder seulement les 30 dernières sauvegardes
 ls -t "$BACKUP_DIR"/gestion_*.sqlite3 | tail -n +31 | xargs rm -f 2>/dev/null
 ```
@@ -508,7 +498,7 @@ cd /volume1/docker/gestion-locative
 sudo docker compose stop gestion-locative
 
 # Restaurer la BDD
-sudo docker cp /volume1/homes/admin/backups/gestion_20260206_0300.sqlite3 gestion_locative:/app/db.sqlite3
+sudo docker cp /volume1/homes/admin/backups/gestion_20260206_0300.sqlite3 gestion_locative:/app/data/db.sqlite3
 
 # Redémarrer
 sudo docker compose start gestion-locative

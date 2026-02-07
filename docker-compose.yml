@@ -13,8 +13,8 @@ services:
     env_file:
       - .env
     volumes:
-      # Base de données persistante
-      - db-data:/app
+      # Base de données persistante (uniquement le fichier SQLite)
+      - db-data:/app/data
       # Logs
       - ./logs:/app/logs
 
