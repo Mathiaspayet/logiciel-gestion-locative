@@ -254,8 +254,8 @@ JAZZMIN_SETTINGS = {
     # Message de bienvenue
     "welcome_sign": "Bienvenue dans votre espace de gestion",
 
-    # Copyright
-    "copyright": "Gestion Locative",
+    # Copyright (avec version build)
+    "copyright": f"Gestion Locative — v.{BUILD_VERSION} ({BUILD_DATE})" if BUILD_DATE else "Gestion Locative",
 
     # Icônes des modèles (Font Awesome)
     "icons": {
