@@ -31,7 +31,7 @@ ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').sp
 
 # Version info (injectée par le CI/CD)
 BUILD_VERSION = os.environ.get('BUILD_VERSION', 'dev')[:7]
-BUILD_DATE = os.environ.get('BUILD_DATE', '')[:10]
+BUILD_DATE = os.environ.get('BUILD_DATE', '')[:16].replace('T', ' ')
 
 
 # Application definition
