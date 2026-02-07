@@ -107,6 +107,10 @@ sudo docker login ghcr.io -u TON_USERNAME_GITHUB
 # Colle le token comme mot de passe quand demandé
 ```
 
+> **Important :** Cette étape est nécessaire pour que Watchtower puisse aussi
+> télécharger les nouvelles images. Le fichier `docker-compose.synology.yml` monte
+> automatiquement `/root/.docker/config.json` dans le conteneur Watchtower.
+
 ---
 
 ## 4. Premier déploiement sur le NAS
@@ -478,6 +482,30 @@ sudo docker logs watchtower
 
 # Forcer une vérification
 sudo docker restart watchtower
+```
+
+Si les logs affichent une erreur d'authentification (401/403) lors du pull depuis GHCR :
+
+1. Vérifie que tu es connecté au registre GHCR sur le NAS :
+
+```bash
+sudo docker login ghcr.io -u TON_USERNAME_GITHUB
+# Colle ton Personal Access Token (avec le scope read:packages) comme mot de passe
+```
+
+2. Vérifie que le fichier de credentials existe :
+
+```bash
+sudo cat /root/.docker/config.json
+# Tu devrais voir une entrée pour ghcr.io
+```
+
+3. Redémarre Watchtower pour qu'il utilise les nouvelles credentials :
+
+```bash
+cd /volume1/docker/gestion-locative
+sudo docker compose -f docker-compose.yml down watchtower
+sudo docker compose -f docker-compose.yml up -d watchtower
 ```
 
 ### L'image Docker n'est pas trouvée

@@ -34,7 +34,11 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # Credentials Docker pour accéder à GHCR (après docker login ghcr.io sur le NAS)
+      - /root/.docker/config.json:/config.json:ro
     environment:
+      # Chemin du fichier de credentials Docker dans le conteneur
+      DOCKER_CONFIG: /
       # Vérifier les mises à jour toutes les 5 minutes
       WATCHTOWER_POLL_INTERVAL: 300
       # Nettoyer les anciennes images
