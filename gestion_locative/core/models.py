@@ -1,3 +1,4 @@
+from datetime import date
 from django.db import models
 from django.utils import timezone
 
@@ -103,13 +104,15 @@ class Bail(models.Model):
 
     @property
     def montant_tva(self):
+        from decimal import Decimal
         if not self.soumis_tva:
-            return 0
-        return ((self.loyer_hc + self.charges) * self.taux_tva) / 100
+            return Decimal('0')
+        return ((Decimal(str(self.loyer_hc)) + Decimal(str(self.charges))) * self.taux_tva) / 100
 
     @property
     def loyer_ttc(self):
-        return float(self.loyer_hc) + float(self.charges) + float(self.taxes) + float(self.montant_tva)
+        from decimal import Decimal
+        return Decimal(str(self.loyer_hc)) + Decimal(str(self.charges)) + Decimal(str(self.taxes)) + Decimal(str(self.montant_tva))
 
     # === TARIFICATION HISTORY METHODS ===
 
@@ -258,18 +261,22 @@ class BailTarification(models.Model):
         verbose_name = "Tarification"
         verbose_name_plural = "Tarifications"
         ordering = ['-date_debut']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['bail'],
+                condition=models.Q(date_fin__isnull=True),
+                name='one_active_tarification_per_bail'
+            ),
+        ]
 
     def __str__(self):
         date_fin_str = self.date_fin.strftime('%d/%m/%Y') if self.date_fin else 'en cours'
         return f"{self.bail.local.numero_porte} - Du {self.date_debut.strftime('%d/%m/%Y')} au {date_fin_str}"
 
     def clean(self):
-        """Validation basique (cohérence des dates uniquement).
-
-        Note: La validation des chevauchements est faite au niveau du formset
-        dans l'admin pour pouvoir voir toutes les modifications en cours.
-        """
+        """Validation des dates et des chevauchements avec les tarifications existantes."""
         from django.core.exceptions import ValidationError
+        from django.db.models import Q
         errors = {}
 
         # 1. date_fin > date_debut
@@ -280,6 +287,26 @@ class BailTarification(models.Model):
         if self.bail_id and self.bail.date_debut:
             if self.date_debut < self.bail.date_debut:
                 errors['date_debut'] = "La tarification ne peut pas commencer avant le début du bail."
+
+        # 3. Vérifier le chevauchement avec les tarifications existantes en base
+        if self.bail_id and self.date_debut:
+            far_future = date(9999, 12, 31)
+            my_fin = self.date_fin or far_future
+
+            overlapping = self.bail.tarifications.filter(
+                date_debut__lte=my_fin
+            ).filter(
+                Q(date_fin__gte=self.date_debut) | Q(date_fin__isnull=True)
+            )
+            if self.pk:
+                overlapping = overlapping.exclude(pk=self.pk)
+
+            if overlapping.exists():
+                conflicts = overlapping.first()
+                errors['date_debut'] = (
+                    f"Chevauchement avec la tarification du "
+                    f"{conflicts.date_debut.strftime('%d/%m/%Y')}."
+                )
 
         if errors:
             raise ValidationError(errors)
@@ -482,17 +509,19 @@ class CreditImmobilier(models.Model):
     @property
     def mensualite_hors_assurance(self):
         """Calcule la mensualité hors assurance (formule prêt amortissable)."""
+        from decimal import Decimal, ROUND_HALF_UP
+        capital = Decimal(str(self.capital_emprunte))
+        taux = Decimal(str(self.taux_interet))
+        taux_mensuel = taux / 100 / 12
+        n = self.duree_mois
+
         if self.type_credit == 'IN_FINE':
-            # In fine : on ne paie que les intérêts mensuellement
-            return (float(self.capital_emprunte) * float(self.taux_interet) / 100) / 12
+            return float((capital * taux_mensuel).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
         else:
-            # Amortissable : formule classique
-            capital = float(self.capital_emprunte)
-            taux_mensuel = float(self.taux_interet) / 100 / 12
-            n = self.duree_mois
             if taux_mensuel == 0:
-                return capital / n
-            return capital * (taux_mensuel * (1 + taux_mensuel) ** n) / ((1 + taux_mensuel) ** n - 1)
+                return float((capital / n).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+            mensualite = capital * (taux_mensuel * (1 + taux_mensuel) ** n) / ((1 + taux_mensuel) ** n - 1)
+            return float(mensualite.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
     @property
     def mensualite(self):
@@ -512,7 +541,8 @@ class CreditImmobilier(models.Model):
         return self.get_capital_restant_du_at(timezone.now().date())
 
     def get_capital_restant_du_at(self, target_date):
-        """Calcule le capital restant dû à une date donnée."""
+        """Calcule le capital restant dû à une date donnée (Decimal pour la précision)."""
+        from decimal import Decimal, ROUND_HALF_UP
         if target_date < self.date_debut:
             return float(self.capital_emprunte)
         if target_date >= self.date_fin:
@@ -524,17 +554,17 @@ class CreditImmobilier(models.Model):
         mois_ecoules = delta.years * 12 + delta.months
 
         if self.type_credit == 'IN_FINE':
-            # In fine : capital remboursé en totalité à la fin
             return float(self.capital_emprunte)
         else:
-            # Amortissable : calculer le CRD
-            capital = float(self.capital_emprunte)
-            taux_mensuel = float(self.taux_interet) / 100 / 12
+            capital = Decimal(str(self.capital_emprunte))
+            taux_mensuel = Decimal(str(self.taux_interet)) / 100 / 12
             if taux_mensuel == 0:
-                return capital - (capital / self.duree_mois * mois_ecoules)
-            mensualite = self.mensualite_hors_assurance
+                crd = capital - (capital / self.duree_mois * mois_ecoules)
+                return float(max(Decimal('0'), crd.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)))
+            n = self.duree_mois
+            mensualite = capital * (taux_mensuel * (1 + taux_mensuel) ** n) / ((1 + taux_mensuel) ** n - 1)
             crd = capital * ((1 + taux_mensuel) ** mois_ecoules) - mensualite * (((1 + taux_mensuel) ** mois_ecoules - 1) / taux_mensuel)
-            return max(0, crd)
+            return float(max(Decimal('0'), crd.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)))
 
     class Meta:
         verbose_name = "Crédit immobilier"
@@ -556,7 +586,7 @@ class EcheanceCredit(models.Model):
     @property
     def mensualite_totale(self):
         """Total de l'échéance."""
-        return float(self.capital_rembourse) + float(self.interets) + float(self.assurance)
+        return self.capital_rembourse + self.interets + self.assurance
 
     def __str__(self):
         return f"Échéance {self.numero_echeance} - {self.date_echeance}"
@@ -617,7 +647,8 @@ class Amortissement(models.Model):
     @property
     def dotation_annuelle(self):
         """Dotation annuelle aux amortissements."""
-        return float(self.valeur_origine) / self.duree_amortissement
+        from decimal import Decimal, ROUND_HALF_UP
+        return float((Decimal(str(self.valeur_origine)) / self.duree_amortissement).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
     @property
     def date_fin_amortissement(self):
@@ -627,6 +658,7 @@ class Amortissement(models.Model):
 
     def get_valeur_nette_comptable(self, target_date):
         """Valeur nette comptable à une date donnée."""
+        from decimal import Decimal, ROUND_HALF_UP
         if target_date < self.date_mise_service:
             return float(self.valeur_origine)
         if target_date >= self.date_fin_amortissement:
@@ -634,9 +666,12 @@ class Amortissement(models.Model):
 
         from dateutil.relativedelta import relativedelta
         delta = relativedelta(target_date, self.date_mise_service)
-        annees_ecoulees = delta.years + (1 if delta.months >= 6 else 0)  # Prorata simplifié
-        amortissement_cumule = self.dotation_annuelle * annees_ecoulees
-        return max(0, float(self.valeur_origine) - amortissement_cumule)
+        # Prorata au mois près (plus précis que le seuil 6 mois)
+        mois_ecoules = delta.years * 12 + delta.months
+        dotation_mensuelle = Decimal(str(self.valeur_origine)) / (self.duree_amortissement * 12)
+        amortissement_cumule = dotation_mensuelle * mois_ecoules
+        vnc = Decimal(str(self.valeur_origine)) - amortissement_cumule
+        return float(max(Decimal('0'), vnc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)))
 
     def __str__(self):
         return f"{self.libelle} - {self.valeur_origine}€ sur {self.duree_amortissement} ans"

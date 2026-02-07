@@ -8,8 +8,10 @@ from io import BytesIO
 
 from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404, redirect
+from django.db import transaction
 from django.db.models import Q
 from django.middleware.csrf import get_token
+from django.contrib.admin.views.decorators import staff_member_required
 
 from .models import Immeuble, Bail, Local
 from .pdf_generator import PDFGenerator
@@ -109,6 +111,7 @@ def generer_periodes_disponibles(bail, nb_periodes=None):
 # VUES PDF (Refactorisées)
 # ============================================================================
 
+@staff_member_required
 def generer_quittance_pdf(request, pk):
     """
     Génère une quittance de loyer pour un bail.
@@ -170,9 +173,10 @@ def generer_quittance_pdf(request, pk):
         return HttpResponse(str(e), status=400)
     except Exception as e:
         logger.exception(f"Erreur inattendue génération quittance bail {pk}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        return HttpResponse("Une erreur interne est survenue. Consultez les logs pour plus de détails.", status=500)
 
 
+@staff_member_required
 def generer_avis_echeance_pdf(request, pk):
     """
     Génère un avis d'échéance pour un bail.
@@ -227,13 +231,14 @@ def generer_avis_echeance_pdf(request, pk):
         return HttpResponse(str(e), status=400)
     except Exception as e:
         logger.exception(f"Erreur génération avis bail {pk}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        return HttpResponse("Une erreur interne est survenue. Consultez les logs pour plus de détails.", status=500)
 
 
 # ============================================================================
 # VUES PDF REFACTORISÉES - RÉGULARISATION
 # ============================================================================
 
+@staff_member_required
 def generer_regularisation_pdf(request, pk):
     """
     Génère le décompte de régularisation de charges sur une période donnée.
@@ -289,13 +294,14 @@ def generer_regularisation_pdf(request, pk):
         return HttpResponse(str(e), status=400)
     except Exception as e:
         logger.exception(f"Erreur inattendue génération régularisation bail {pk}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        return HttpResponse("Une erreur interne est survenue. Consultez les logs pour plus de détails.", status=500)
 
 
 # ============================================================================
 # VUES PDF REFACTORISÉES - SOLDE DE TOUT COMPTE
 # ============================================================================
 
+@staff_member_required
 def generer_solde_tout_compte_pdf(request, pk):
     """
     Génère l'arrêté de compte de fin de bail (Solde de tout compte).
@@ -323,7 +329,10 @@ def generer_solde_tout_compte_pdf(request, pk):
     try:
         date_sortie = request.POST.get('date_sortie')
         statut_loyer = request.POST.get('statut_loyer')
-        montant_retenues = float(request.POST.get('montant_retenues') or 0)
+        try:
+            montant_retenues = float(request.POST.get('montant_retenues') or 0)
+        except (ValueError, TypeError):
+            return HttpResponse("Erreur: Montant des retenues invalide.", status=400)
         desc_retenues = request.POST.get('desc_retenues', '')
 
         if not date_sortie:
@@ -350,41 +359,55 @@ def generer_solde_tout_compte_pdf(request, pk):
         return HttpResponse(str(e), status=400)
     except Exception as e:
         logger.exception(f"Erreur génération solde bail {pk}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        return HttpResponse("Une erreur interne est survenue. Consultez les logs pour plus de détails.", status=500)
 
 
 # ============================================================================
 # VUES PDF REFACTORISÉES - RÉVISION LOYER
 # ============================================================================
 
-def fetch_insee_indices(url, limit=8):
-    """Récupère les derniers indices (Trimestre, Valeur) sur le site de l'INSEE."""
+def fetch_insee_indices(url, limit=8, max_retries=3):
+    """Récupère les derniers indices (Trimestre, Valeur) sur le site de l'INSEE.
+    Retry avec backoff exponentiel en cas d'erreur réseau.
+    """
     import urllib.request
+    import urllib.error
     import re
+    import time
 
-    indices = []
-    try:
-        req = urllib.request.Request(
-            url,
-            data=None,
-            headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        )
-        with urllib.request.urlopen(req, timeout=3) as response:
-            html = response.read().decode('utf-8')
-            pattern = r'<th[^>]*>(T[1-4] [0-9]{4})</th>[\s\S]*?<td class="nombre">([0-9]+,[0-9]+)</td>'
-            matches = re.findall(pattern, html)
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(
+                url,
+                data=None,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                html = response.read().decode('utf-8')
+                pattern = r'<th[^>]*>(T[1-4] [0-9]{4})</th>[\s\S]*?<td class="nombre">([0-9]+,[0-9]+)</td>'
+                matches = re.findall(pattern, html)
 
-            for match in matches[:limit]:
-                trimestre = match[0]
-                valeur = match[1].replace(',', '.')
-                indices.append({'trimestre': trimestre, 'valeur': float(valeur)})
-    except Exception as e:
-        logger.warning(f"Erreur récupération INSEE : {e}")
-    return indices
+                indices = []
+                for match in matches[:limit]:
+                    trimestre = match[0]
+                    valeur = match[1].replace(',', '.')
+                    indices.append({'trimestre': trimestre, 'valeur': float(valeur)})
+                return indices
+        except urllib.error.URLError as e:
+            wait_time = 2 ** attempt
+            logger.warning(f"Erreur réseau INSEE (tentative {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(wait_time)
+        except Exception as e:
+            logger.warning(f"Erreur récupération INSEE : {e}")
+            break
+
+    return []
 
 
+@staff_member_required
 def generer_revision_loyer_pdf(request, pk):
     """
     Génère le courrier de révision de loyer et redirige vers assistant si update_bail.
@@ -426,15 +449,23 @@ def generer_revision_loyer_pdf(request, pk):
     try:
         choix = request.POST.get('choix_indice')
 
-        if choix and choix != "MANUEL":
-            val_str, trim_str = choix.split('|')
-            nouvel_indice = float(val_str)
-            nouveau_trimestre = trim_str
-        else:
-            nouvel_indice = float(request.POST.get('nouvel_indice_manuel').replace(',', '.'))
-            nouveau_trimestre = request.POST.get('nouveau_trimestre_manuel')
+        try:
+            if choix and choix != "MANUEL":
+                val_str, trim_str = choix.split('|')
+                nouvel_indice = float(val_str)
+                nouveau_trimestre = trim_str
+            else:
+                raw_indice = request.POST.get('nouvel_indice_manuel', '')
+                if not raw_indice:
+                    return HttpResponse("Erreur: Nouvel indice non renseigné.", status=400)
+                nouvel_indice = float(raw_indice.replace(',', '.'))
+                nouveau_trimestre = request.POST.get('nouveau_trimestre_manuel')
+        except (ValueError, TypeError):
+            return HttpResponse("Erreur: Valeur d'indice invalide.", status=400)
 
         date_app_str = request.POST.get('date_application')
+        if not date_app_str:
+            return HttpResponse("Erreur: Date d'application manquante.", status=400)
         date_app = datetime.strptime(date_app_str, '%Y-%m-%d').date()
         update_bail = request.POST.get('update_bail') == 'on'
 
@@ -482,13 +513,14 @@ def generer_revision_loyer_pdf(request, pk):
 
     except Exception as e:
         logger.exception(f"Erreur génération révision bail {pk}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        return HttpResponse("Une erreur interne est survenue. Consultez les logs pour plus de détails.", status=500)
 
 
 # ============================================================================
 # ASSISTANT CRÉATION TARIFICATION (après révision)
 # ============================================================================
 
+@staff_member_required
 def creer_tarification_from_revision(request, pk):
     """
     Assistant de création de tarification suite à une révision IRL/ILC.
@@ -519,31 +551,32 @@ def creer_tarification_from_revision(request, pk):
 
         return render(request, 'pdf_forms/tarification_revision_form.html', context)
 
-    # POST: Créer la tarification
+    # POST: Créer la tarification (transaction atomique pour éviter les incohérences)
     try:
-        # 1. Fermer l'ancienne tarification
-        tarif_actuel = bail.tarification_actuelle
-        if tarif_actuel:
-            date_fin_ancienne = datetime.strptime(request.POST.get('date_fin_ancienne'), '%Y-%m-%d').date()
-            tarif_actuel.date_fin = date_fin_ancienne
-            tarif_actuel.save()
-            logger.info(f"Tarification {tarif_actuel.pk} fermée au {date_fin_ancienne}")
+        with transaction.atomic():
+            # 1. Fermer l'ancienne tarification
+            tarif_actuel = bail.tarification_actuelle
+            if tarif_actuel:
+                date_fin_ancienne = datetime.strptime(request.POST.get('date_fin_ancienne'), '%Y-%m-%d').date()
+                tarif_actuel.date_fin = date_fin_ancienne
+                tarif_actuel.save()
+                logger.info(f"Tarification {tarif_actuel.pk} fermée au {date_fin_ancienne}")
 
-        # 2. Créer nouvelle tarification
-        nouvelle_tarif = BailTarification.objects.create(
-            bail=bail,
-            date_debut=datetime.strptime(request.POST.get('date_debut'), '%Y-%m-%d').date(),
-            date_fin=None,
-            loyer_hc=float(request.POST.get('loyer_hc')),
-            charges=float(request.POST.get('charges')),
-            taxes=float(request.POST.get('taxes')),
-            indice_reference=float(request.POST.get('indice_reference')),
-            trimestre_reference=request.POST.get('trimestre_reference'),
-            reason=request.POST.get('reason'),
-            notes=f"Révision IRL/ILC. Ancien: {data['ancien_loyer']:.2f}€, Nouvel indice: {data['nouvel_indice']}"
-        )
+            # 2. Créer nouvelle tarification
+            nouvelle_tarif = BailTarification.objects.create(
+                bail=bail,
+                date_debut=datetime.strptime(request.POST.get('date_debut'), '%Y-%m-%d').date(),
+                date_fin=None,
+                loyer_hc=request.POST.get('loyer_hc'),
+                charges=request.POST.get('charges'),
+                taxes=request.POST.get('taxes'),
+                indice_reference=request.POST.get('indice_reference'),
+                trimestre_reference=request.POST.get('trimestre_reference'),
+                reason=request.POST.get('reason'),
+                notes=f"Révision IRL/ILC. Ancien: {data['ancien_loyer']:.2f}€, Nouvel indice: {data['nouvel_indice']}"
+            )
 
-        logger.info(f"Nouvelle tarification {nouvelle_tarif.pk} créée pour bail {bail.pk}")
+            logger.info(f"Nouvelle tarification {nouvelle_tarif.pk} créée pour bail {bail.pk}")
 
         # 3. Générer le courrier PDF
         generator = PDFGenerator(bail)
@@ -567,15 +600,12 @@ def creer_tarification_from_revision(request, pk):
 
     except Exception as e:
         logger.exception(f"Erreur création tarification bail {pk}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        return HttpResponse("Une erreur interne est survenue. Consultez les logs pour plus de détails.", status=500)
 
 
 # ============================================================================
 # DASHBOARD PATRIMOINE
 # ============================================================================
-
-from django.contrib.admin.views.decorators import staff_member_required
-
 
 @staff_member_required
 def dashboard_patrimoine(request):
@@ -1053,7 +1083,7 @@ def assistant_credit(request, immeuble_id=None):
 
         except Exception as e:
             logger.exception("Erreur lors de la création du crédit")
-            return HttpResponse(f"Erreur: {str(e)}", status=500)
+            return HttpResponse("Une erreur interne est survenue. Consultez les logs pour plus de détails.", status=500)
 
     # GET : Afficher le formulaire
     context = {

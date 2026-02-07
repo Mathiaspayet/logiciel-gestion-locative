@@ -9,9 +9,10 @@ Ce module contient les classes de calcul pour:
 - CreditGenerator: Génération d'échéanciers de crédit
 """
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import date
 from dateutil.relativedelta import relativedelta
+from django.db import transaction
 from django.db.models import Sum, Q
 from django.utils import timezone
 
@@ -25,61 +26,69 @@ class CreditGenerator:
     def generer_echeancier(self):
         """
         Calcule l'échéancier complet du crédit.
+        Utilise Decimal pour éviter les erreurs d'arrondi sur 20+ ans.
         Retourne une liste de dictionnaires représentant chaque échéance.
         """
+        TWO_PLACES = Decimal('0.01')
         echeancier = []
-        capital = float(self.credit.capital_emprunte)
-        taux_mensuel = float(self.credit.taux_interet) / 100 / 12
-        assurance = float(self.credit.assurance_mensuelle)
-        date_echeance = self.credit.date_debut
+        capital = Decimal(str(self.credit.capital_emprunte))
+        taux_mensuel = Decimal(str(self.credit.taux_interet)) / 100 / 12
+        assurance = Decimal(str(self.credit.assurance_mensuelle))
 
         if self.credit.type_credit == 'IN_FINE':
             # Crédit in fine : intérêts mensuels, capital à la fin
-            interets_mensuels = capital * taux_mensuel
+            interets_mensuels = (capital * taux_mensuel).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
             for i in range(1, self.credit.duree_mois + 1):
                 date_echeance = self.credit.date_debut + relativedelta(months=i)
-                capital_rembourse = capital if i == self.credit.duree_mois else 0
-                capital_restant = capital if i < self.credit.duree_mois else 0
+                capital_rembourse = capital if i == self.credit.duree_mois else Decimal('0')
+                capital_restant = capital if i < self.credit.duree_mois else Decimal('0')
 
                 echeancier.append({
                     'numero_echeance': i,
                     'date_echeance': date_echeance,
-                    'capital_rembourse': round(capital_rembourse, 2),
-                    'interets': round(interets_mensuels, 2),
-                    'assurance': round(assurance, 2),
-                    'capital_restant_du': round(capital_restant, 2),
+                    'capital_rembourse': capital_rembourse.quantize(TWO_PLACES),
+                    'interets': interets_mensuels,
+                    'assurance': assurance.quantize(TWO_PLACES),
+                    'capital_restant_du': capital_restant.quantize(TWO_PLACES),
                 })
         else:
             # Crédit amortissable classique
-            mensualite_hors_assurance = self.credit.mensualite_hors_assurance
+            n = self.credit.duree_mois
+            if taux_mensuel == 0:
+                mensualite = capital / n
+            else:
+                mensualite = capital * (taux_mensuel * (1 + taux_mensuel) ** n) / ((1 + taux_mensuel) ** n - 1)
+            mensualite = mensualite.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
             capital_restant = capital
 
             for i in range(1, self.credit.duree_mois + 1):
                 date_echeance = self.credit.date_debut + relativedelta(months=i)
-                interets = capital_restant * taux_mensuel
-                capital_rembourse = mensualite_hors_assurance - interets
-                capital_restant = max(0, capital_restant - capital_rembourse)
+                interets = (capital_restant * taux_mensuel).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+                capital_rembourse = mensualite - interets
+                capital_restant = max(Decimal('0'), capital_restant - capital_rembourse)
 
                 # Ajustement dernière échéance
                 if i == self.credit.duree_mois:
                     capital_rembourse += capital_restant
-                    capital_restant = 0
+                    capital_restant = Decimal('0')
 
                 echeancier.append({
                     'numero_echeance': i,
                     'date_echeance': date_echeance,
-                    'capital_rembourse': round(capital_rembourse, 2),
-                    'interets': round(interets, 2),
-                    'assurance': round(assurance, 2),
-                    'capital_restant_du': round(capital_restant, 2),
+                    'capital_rembourse': capital_rembourse.quantize(TWO_PLACES),
+                    'interets': interets,
+                    'assurance': assurance.quantize(TWO_PLACES),
+                    'capital_restant_du': capital_restant.quantize(TWO_PLACES),
                 })
 
         return echeancier
 
+    @transaction.atomic
     def creer_echeances_en_base(self):
         """
         Génère et sauvegarde l'échéancier complet en base de données.
         Supprime l'ancien échéancier s'il existe.
+        Opération atomique : si bulk_create échoue, la suppression est annulée.
         """
         from .models import EcheanceCredit
 
@@ -219,9 +228,9 @@ class RentabiliteCalculator:
                 debut_effectif = max(bail.date_debut, date_debut_annee)
                 fin_effective = bail.date_fin if bail.date_fin and bail.date_fin <= date_fin_annee else date_fin_annee
 
-                # Nombre de mois (approximatif)
+                # Nombre de mois actifs dans l'année
                 mois_actifs = (fin_effective.year - debut_effectif.year) * 12 + (fin_effective.month - debut_effectif.month) + 1
-                mois_actifs = min(mois_actifs, 12)
+                mois_actifs = max(0, min(mois_actifs, 12))  # Borner entre 0 et 12 (une année max)
 
                 if bail.frequence_paiement == 'TRIMESTRIEL':
                     # Pour un bail trimestriel : 4 loyers par an (ou prorata)
@@ -234,10 +243,15 @@ class RentabiliteCalculator:
                         total_loyers += float(tarif.loyer_hc) * nombre_trimestres
                 else:
                     # Pour un bail mensuel : récupérer les tarifications pour chaque mois
-                    for mois in range(1, mois_actifs + 1):
-                        date_mois = date(annee, min(mois + debut_effectif.month - 1, 12), 1)
-                        if date_mois.month > 12:
-                            continue
+                    for mois_offset in range(mois_actifs):
+                        m = debut_effectif.month + mois_offset
+                        y = annee
+                        if m > 12:
+                            m -= 12
+                            y += 1
+                        if y != annee:
+                            break  # Ne pas dépasser l'année en cours
+                        date_mois = date(y, m, 1)
                         tarif = bail.get_tarification_at(date_mois)
                         if tarif:
                             total_loyers += float(tarif.loyer_hc)

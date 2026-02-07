@@ -470,14 +470,30 @@ class PDFGenerator:
         details_calculs.append("")
         details_calculs.append("--- DÉTAIL DÉPENSES ---")
 
-        # Récupérer les dépenses
+        # Récupérer les dépenses avec select_related pour éviter les N+1 queries
         depenses = Depense.objects.filter(
             Q(immeuble=self.bail.local.immeuble) &
             (
                 Q(date__range=[date_debut, date_fin]) |
                 Q(date_debut__lte=date_fin, date_fin__gte=date_debut)
             )
-        ).distinct()
+        ).select_related('cle_repartition').distinct()
+
+        # Pré-charger les quote-parts pour le local concerné (évite N+1 queries dans la boucle)
+        from .models import QuotePart
+        local_quote_parts = {
+            qp.cle_id: qp.valeur
+            for qp in QuotePart.objects.filter(local=self.bail.local)
+        }
+        # Pré-charger les totaux par clé
+        from django.db.models import Sum as AggSum
+        cle_ids = [d.cle_repartition_id for d in depenses if d.cle_repartition_id]
+        cle_totals = dict(
+            QuotePart.objects.filter(cle_id__in=cle_ids)
+            .values_list('cle_id')
+            .annotate(total=AggSum('valeur'))
+            .values_list('cle_id', 'total')
+        )
 
         total_part_locataire = 0
 
@@ -516,11 +532,11 @@ class PDFGenerator:
         for depense in depenses:
             cle = depense.cle_repartition
             if cle:
-                qp_local = cle.quote_parts.filter(local=self.bail.local).first()
-                total_cle = cle.quote_parts.aggregate(Sum('valeur'))['valeur__sum'] or 0
+                qp_valeur = local_quote_parts.get(cle.id)
+                total_cle = cle_totals.get(cle.id, 0)
 
-                if qp_local and total_cle > 0:
-                    part_theorique = (depense.montant * qp_local.valeur) / total_cle
+                if qp_valeur and total_cle > 0:
+                    part_theorique = (depense.montant * qp_valeur) / total_cle
 
                     # LOGIQUE PRORATA INTELLIGENTE
                     if depense.date_debut and depense.date_fin:
@@ -573,7 +589,7 @@ class PDFGenerator:
                 Q(date_releve__range=[date_debut, date_fin]) |
                 Q(date_debut__lte=date_fin, date_releve__gte=date_debut)
             )
-        ).distinct()
+        ).select_related('cle_repartition').distinct()
 
         details_calculs.append("")
         details_calculs.append("--- DÉTAIL CONSOMMATIONS ---")

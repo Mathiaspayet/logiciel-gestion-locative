@@ -1,4 +1,5 @@
-django
+django>=5.0,<7.0
 reportlab
 django-jazzmin
 python-dateutil
+gunicorn
