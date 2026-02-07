@@ -29,6 +29,10 @@ DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# Version info (injectée par le CI/CD)
+BUILD_VERSION = os.environ.get('BUILD_VERSION', 'dev')[:7]
+BUILD_DATE = os.environ.get('BUILD_DATE', '')[:10]
+
 
 # Application definition
 
@@ -239,7 +243,7 @@ JAZZMIN_SETTINGS = {
     "site_title": "Gestion Locative",
 
     # Titre affiché dans l'admin (header)
-    "site_header": "Gestion Locative & Patrimoine",
+    "site_header": f"Gestion Locative & Patrimoine — v.{BUILD_VERSION} ({BUILD_DATE})" if BUILD_DATE else "Gestion Locative & Patrimoine",
 
     # Titre sur la page de connexion
     "site_brand": "Gestion Locative",

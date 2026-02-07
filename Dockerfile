@@ -8,6 +8,12 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# Version et date de build (injectées par le CI/CD)
+ARG BUILD_VERSION=dev
+ARG BUILD_DATE=unknown
+ENV BUILD_VERSION=${BUILD_VERSION}
+ENV BUILD_DATE=${BUILD_DATE}
+
 # Dépendances système pour ReportLab (fonts)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
