@@ -533,7 +533,7 @@
             <h3>Ajouter un local</h3>
             <div class="value neutral" style="font-size: 32px;">🚪</div>
         </a>
-        <a href="{% url 'assistant_credit_immeuble' immeuble.id %}" class="stat-card" style="text-decoration: none; cursor: pointer;">
+        <a href="{% url 'admin:core_creditimmobilier_add' %}?immeuble={{ immeuble.id }}" class="stat-card" style="text-decoration: none; cursor: pointer;">
             <h3>Ajouter un crédit</h3>
             <div class="value neutral" style="font-size: 32px;">🏦</div>
         </a>

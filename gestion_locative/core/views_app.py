@@ -1,4 +1,6 @@
-from datetime import date
+import logging
+from datetime import date, datetime
+from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
@@ -21,8 +23,10 @@ from core.forms import (
 )
 from core.patrimoine_calculators import (
     PatrimoineCalculator, RentabiliteCalculator, RatiosCalculator,
-    FiscaliteCalculator,
+    FiscaliteCalculator, CreditGenerator,
 )
+
+logger = logging.getLogger(__name__)
 from core.views import generer_periodes_disponibles
 
 
@@ -532,18 +536,44 @@ def estimation_delete_view(request, pk):
 
 @login_required
 def credit_create_view(request, immeuble_pk):
-    """Creer un credit pour un immeuble (modal HTMX)."""
+    """Assistant interactif pour creer un credit immobilier."""
     immeuble = get_object_or_404(Immeuble, pk=immeuble_pk)
-    action_url = f'/app/immeubles/{immeuble_pk}/credits/creer/'
+
     if request.method == 'POST':
-        form = CreditImmobilierForm(request.POST)
-        if form.is_valid():
-            form.save()
-            return _modal_success()
-    else:
-        form = CreditImmobilierForm(initial={'immeuble': immeuble})
-    form.fields['immeuble'].widget = django_forms.HiddenInput()
-    return _modal_form_response(request, form, f'Nouveau credit - {immeuble.nom}', action_url)
+        try:
+            nom_banque = request.POST.get('nom_banque', '').strip()
+            numero_pret = request.POST.get('numero_pret', '').strip()
+            date_debut_str = request.POST.get('date_debut')
+            type_credit = request.POST.get('type_credit', 'AMORTISSABLE')
+            assurance_mensuelle = Decimal(request.POST.get('assurance_mensuelle') or '0')
+
+            capital = Decimal(request.POST.get('capital_emprunte_final') or request.POST.get('capital_emprunte'))
+            taux = Decimal(request.POST.get('taux_interet_final') or request.POST.get('taux_interet'))
+            duree = int(request.POST.get('duree_mois_final') or request.POST.get('duree_mois'))
+
+            credit = CreditImmobilier.objects.create(
+                immeuble=immeuble,
+                nom_banque=nom_banque,
+                numero_pret=numero_pret,
+                capital_emprunte=capital,
+                taux_interet=taux,
+                duree_mois=duree,
+                date_debut=datetime.strptime(date_debut_str, '%Y-%m-%d').date(),
+                type_credit=type_credit,
+                assurance_mensuelle=assurance_mensuelle,
+            )
+
+            generator = CreditGenerator(credit)
+            generator.creer_echeances_en_base()
+
+            messages.success(request, f'Credit {nom_banque} cree avec succes ({credit.echeances.count()} echeances generees).')
+            return redirect('app_immeuble_detail', pk=immeuble.pk)
+
+        except Exception as e:
+            logger.exception("Erreur lors de la creation du credit via assistant")
+            messages.error(request, f'Erreur lors de la creation du credit : {e}')
+
+    return render(request, 'app/credits/assistant.html', {'immeuble': immeuble})
 
 
 @login_required
