@@ -95,6 +95,9 @@
                     </svg>
                 </a>
             </div>
+            {% if build_version %}
+            <p class="mt-2 text-xs text-gray-500 truncate">v.{{ build_version }}{% if build_date %} — {{ build_date }}{% endif %}</p>
+            {% endif %}
         </div>
     </aside>
 
