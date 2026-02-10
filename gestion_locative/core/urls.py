@@ -10,7 +10,6 @@ from .views import (
     dashboard_patrimoine,
     dashboard_immeuble_detail,
     bilan_fiscal_immeuble,
-    assistant_credit,
 )
 
 urlpatterns = [
@@ -28,8 +27,4 @@ urlpatterns = [
 
     # Bilan Fiscal
     path('fiscal/immeuble/<int:immeuble_id>/', bilan_fiscal_immeuble, name='bilan_fiscal_immeuble'),
-
-    # Assistant Crédit
-    path('assistant-credit/', assistant_credit, name='assistant_credit'),
-    path('assistant-credit/<int:immeuble_id>/', assistant_credit, name='assistant_credit_immeuble'),
 ]
