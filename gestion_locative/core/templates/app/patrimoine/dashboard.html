@@ -1,0 +1,187 @@
+{% extends "app/base.html" %}
+{% load app_filters %}
+
+{% block title %}Patrimoine - Gestion Locative{% endblock %}
+{% block page_title %}Dashboard Patrimoine{% endblock %}
+
+{% block content %}
+<!-- KPIs globaux -->
+<div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <p class="text-xs text-gray-500 mb-1">Valeur patrimoine</p>
+        <p class="text-lg font-bold text-gray-900">{{ total_valeur|euro }}</p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <p class="text-xs text-gray-500 mb-1">Capital restant du</p>
+        <p class="text-lg font-bold text-red-600">{{ total_crd|euro }}</p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <p class="text-xs text-gray-500 mb-1">Valeur nette</p>
+        <p class="text-lg font-bold {% if total_valeur_nette >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ total_valeur_nette|euro }}</p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <p class="text-xs text-gray-500 mb-1">Cashflow / mois</p>
+        <p class="text-lg font-bold {% if total_cashflow >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ total_cashflow|euro }}</p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <p class="text-xs text-gray-500 mb-1">Immeubles</p>
+        <p class="text-lg font-bold text-gray-900">{{ nb_immeubles }}</p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <p class="text-xs text-gray-500 mb-1">Locaux</p>
+        <p class="text-lg font-bold text-gray-900">{{ nb_locaux }}</p>
+    </div>
+</div>
+
+<!-- Graphiques -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <!-- Repartition -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <h3 class="text-sm font-semibold text-gray-700 mb-4">Repartition du patrimoine</h3>
+        <div class="relative" style="height: 280px;">
+            <canvas id="chartRepartition"></canvas>
+        </div>
+    </div>
+
+    <!-- Cashflow par immeuble -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <h3 class="text-sm font-semibold text-gray-700 mb-4">Cashflow mensuel par immeuble</h3>
+        <div class="relative" style="height: 280px;">
+            <canvas id="chartCashflow"></canvas>
+        </div>
+    </div>
+
+    <!-- Valeur vs CRD -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <h3 class="text-sm font-semibold text-gray-700 mb-4">Valeur brute vs Capital restant du</h3>
+        <div class="relative" style="height: 280px;">
+            <canvas id="chartValeurCRD"></canvas>
+        </div>
+    </div>
+
+    <!-- Projection 10 ans -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <h3 class="text-sm font-semibold text-gray-700 mb-4">Projection valeur nette (10 ans)</h3>
+        <div class="relative" style="height: 280px;">
+            <canvas id="chartEvolution"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Tableau recapitulatif -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-200">
+        <h3 class="text-sm font-semibold text-gray-700">Detail par immeuble</h3>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Immeuble</th>
+                    <th class="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Valeur</th>
+                    <th class="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">CRD</th>
+                    <th class="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Valeur nette</th>
+                    <th class="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Rendement</th>
+                    <th class="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cashflow</th>
+                    <th class="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for data in immeubles_data %}
+                <tr class="hover:bg-gray-50">
+                    <td class="py-3 px-4 text-sm font-medium text-gray-900">
+                        <a href="{% url 'app_immeuble_detail' pk=data.id %}" class="hover:text-blue-600">{{ data.nom }}</a>
+                    </td>
+                    <td class="py-3 px-4 text-sm text-right text-gray-900">{{ data.valeur_actuelle|euro }}</td>
+                    <td class="py-3 px-4 text-sm text-right text-red-600">{{ data.capital_restant_du|euro }}</td>
+                    <td class="py-3 px-4 text-sm text-right font-medium {% if data.valeur_nette >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ data.valeur_nette|euro }}</td>
+                    <td class="py-3 px-4 text-sm text-right">
+                        {% if data.rendement_brut is not None %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                            {% if data.rendement_brut >= 5 %}bg-green-100 text-green-800
+                            {% elif data.rendement_brut >= 3 %}bg-yellow-100 text-yellow-800
+                            {% else %}bg-red-100 text-red-800{% endif %}">
+                            {{ data.rendement_brut|pct }}
+                        </span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td class="py-3 px-4 text-sm text-right font-medium {% if data.cashflow >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ data.cashflow|euro }}</td>
+                    <td class="py-3 px-4 text-sm text-right">
+                        <a href="{% url 'app_bilan_fiscal' pk=data.id %}" class="text-blue-600 hover:text-blue-800">Bilan fiscal</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="py-8 text-center text-gray-500">Aucun immeuble enregistre</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const immeubles = {{ immeubles_json|safe }};
+    const projectionData = {{ projection_json|safe }};
+    const colors = ['#3b82f6', '#10b981', '#06b6d4', '#f59e0b', '#ef4444', '#8b5cf6', '#6b7280'];
+
+    // Repartition (doughnut)
+    new Chart(document.getElementById('chartRepartition'), {
+        type: 'doughnut',
+        data: {
+            labels: immeubles.map(i => i.nom),
+            datasets: [{
+                data: immeubles.map(i => i.valeur_actuelle),
+                backgroundColor: colors,
+                borderWidth: 2, borderColor: '#fff'
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+    });
+
+    // Cashflow (barres)
+    new Chart(document.getElementById('chartCashflow'), {
+        type: 'bar',
+        data: {
+            labels: immeubles.map(i => i.nom),
+            datasets: [{
+                label: 'Cashflow mensuel',
+                data: immeubles.map(i => i.cashflow),
+                backgroundColor: immeubles.map(i => i.cashflow >= 0 ? '#10b981' : '#ef4444'),
+                borderRadius: 4
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    // Valeur vs CRD (barres groupees)
+    new Chart(document.getElementById('chartValeurCRD'), {
+        type: 'bar',
+        data: {
+            labels: immeubles.map(i => i.nom),
+            datasets: [
+                { label: 'Valeur actuelle', data: immeubles.map(i => i.valeur_actuelle), backgroundColor: '#3b82f6', borderRadius: 4 },
+                { label: 'Capital restant du', data: immeubles.map(i => i.capital_restant_du), backgroundColor: '#ef4444', borderRadius: 4 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+    });
+
+    // Projection (courbe)
+    new Chart(document.getElementById('chartEvolution'), {
+        type: 'line',
+        data: {
+            labels: projectionData.labels,
+            datasets: [
+                { label: 'Valeur patrimoine', data: projectionData.valeurs, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.3 },
+                { label: 'Capital restant du', data: projectionData.crd, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, tension: 0.3 },
+                { label: 'Valeur nette', data: projectionData.nette, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
+    });
+});
+</script>
+{% endblock %}

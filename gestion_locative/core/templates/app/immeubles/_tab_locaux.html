@@ -1,0 +1,117 @@
+{% load app_filters %}
+
+<div class="p-5">
+    <!-- Header avec bouton ajouter -->
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Locaux ({{ locaux_data|length }})</h3>
+        <button hx-get="{% url 'app_local_create' immeuble_pk=immeuble.pk %}"
+                hx-target="#modal-content"
+                hx-swap="innerHTML"
+                class="inline-flex items-center px-3 py-1.5 text-sm text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+            Ajouter un local
+        </button>
+    </div>
+
+    {% if locaux_data %}
+    <!-- Vue mobile : cartes -->
+    <div class="space-y-3 lg:hidden">
+        {% for data in locaux_data %}
+        <div class="border border-gray-200 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-2">
+                <div>
+                    <span class="font-medium text-gray-900">{{ data.local.numero_porte }}</span>
+                    <span class="text-sm text-gray-500 ml-1">- {{ data.local.get_type_local_display }}</span>
+                </div>
+                {% if data.bail_actif %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Occupe</span>
+                {% else %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Vacant</span>
+                {% endif %}
+            </div>
+            <div class="text-sm text-gray-600 space-y-1">
+                <p>{{ data.local.surface_m2 }} m2 - Etage {{ data.local.etage }}</p>
+                {% if data.locataire %}
+                <p>{{ data.locataire.nom }} {{ data.locataire.prenom }}</p>
+                {% endif %}
+                {% if data.bail_actif %}
+                <p class="font-medium text-gray-900">{{ data.bail_actif.loyer_hc|euro }} HC/mois</p>
+                {% endif %}
+            </div>
+            <div class="mt-2 flex items-center gap-3">
+                {% if data.bail_actif %}
+                <a href="{% url 'app_bail_detail' pk=data.bail_actif.pk %}" class="text-sm text-blue-600 hover:text-blue-800">Voir le bail</a>
+                {% else %}
+                <button hx-get="{% url 'app_bail_create' local_pk=data.local.pk %}"
+                        hx-target="#modal-content" hx-swap="innerHTML"
+                        class="text-sm text-green-600 hover:text-green-800">+ Creer un bail</button>
+                {% endif %}
+                <button hx-get="{% url 'app_local_edit' pk=data.local.pk %}"
+                        hx-target="#modal-content" hx-swap="innerHTML"
+                        class="text-sm text-gray-400 hover:text-gray-600">Modifier</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Vue desktop : tableau -->
+    <div class="hidden lg:block overflow-x-auto">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    <th class="text-left py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Local</th>
+                    <th class="text-left py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Type</th>
+                    <th class="text-left py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Surface</th>
+                    <th class="text-left py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Etage</th>
+                    <th class="text-left py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Statut</th>
+                    <th class="text-left py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Locataire</th>
+                    <th class="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Loyer HC</th>
+                    <th class="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for data in locaux_data %}
+                <tr class="hover:bg-gray-50">
+                    <td class="py-3 px-3 text-sm font-medium text-gray-900">{{ data.local.numero_porte }}</td>
+                    <td class="py-3 px-3 text-sm text-gray-600">{{ data.local.get_type_local_display }}</td>
+                    <td class="py-3 px-3 text-sm text-gray-600">{{ data.local.surface_m2 }} m2</td>
+                    <td class="py-3 px-3 text-sm text-gray-600">{{ data.local.etage }}</td>
+                    <td class="py-3 px-3">
+                        {% if data.bail_actif %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Occupe</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Vacant</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3 px-3 text-sm text-gray-600">
+                        {% if data.locataire %}{{ data.locataire.nom }} {{ data.locataire.prenom }}{% else %}-{% endif %}
+                    </td>
+                    <td class="py-3 px-3 text-sm text-right font-medium text-gray-900">
+                        {% if data.bail_actif %}{{ data.bail_actif.loyer_hc|euro }}{% else %}-{% endif %}
+                    </td>
+                    <td class="py-3 px-3 text-right whitespace-nowrap">
+                        {% if data.bail_actif %}
+                        <a href="{% url 'app_bail_detail' pk=data.bail_actif.pk %}" class="text-sm text-blue-600 hover:text-blue-800 mr-2">Bail</a>
+                        {% else %}
+                        <button hx-get="{% url 'app_bail_create' local_pk=data.local.pk %}"
+                                hx-target="#modal-content" hx-swap="innerHTML"
+                                class="text-sm text-green-600 hover:text-green-800 mr-2">+ Bail</button>
+                        {% endif %}
+                        <button hx-get="{% url 'app_local_edit' pk=data.local.pk %}"
+                                hx-target="#modal-content" hx-swap="innerHTML"
+                                class="text-sm text-gray-400 hover:text-gray-600 mr-1">Modifier</button>
+                        <button hx-get="{% url 'app_local_delete' pk=data.local.pk %}"
+                                hx-target="#modal-content" hx-swap="innerHTML"
+                                class="text-sm text-red-400 hover:text-red-600">Suppr.</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-8 text-gray-500">
+        <p>Aucun local enregistre pour cet immeuble.</p>
+    </div>
+    {% endif %}
+</div>

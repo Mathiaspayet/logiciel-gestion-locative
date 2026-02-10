@@ -1,0 +1,201 @@
+{% load app_filters %}
+
+<div class="p-5 space-y-6">
+    <!-- Resume financier -->
+    <div>
+        <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Resume annuel</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+                <p class="text-xs text-gray-500 mb-1">Charges annuelles</p>
+                <p class="text-lg font-bold text-gray-900">{{ charges_annuelles|euro }}</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+                <p class="text-xs text-gray-500 mb-1">Interets annuels</p>
+                <p class="text-lg font-bold text-gray-900">{{ interets_annuels|euro }}</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+                <p class="text-xs text-gray-500 mb-1">Cashflow mensuel</p>
+                <p class="text-lg font-bold {% if cashflow >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ cashflow|euro }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Credits -->
+    <div>
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Credits immobiliers</h3>
+            <button hx-get="{% url 'app_credit_create' immeuble_pk=immeuble.pk %}"
+                    hx-target="#modal-content" hx-swap="innerHTML"
+                    class="inline-flex items-center px-3 py-1.5 text-sm text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                Nouveau credit
+            </button>
+        </div>
+        {% if credits %}
+        <div class="space-y-3">
+            {% for credit in credits %}
+            <div class="border border-gray-200 rounded-lg p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <div>
+                        <span class="font-medium text-gray-900">{{ credit.nom_banque }}</span>
+                        {% if credit.numero_pret %}
+                        <span class="text-sm text-gray-500 ml-1">({{ credit.numero_pret }})</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm text-gray-500">{{ credit.get_type_credit_display }}</span>
+                        <button hx-get="{% url 'app_credit_edit' pk=credit.pk %}"
+                                hx-target="#modal-content" hx-swap="innerHTML"
+                                class="text-sm text-blue-500 hover:text-blue-700">Modifier</button>
+                        <button hx-get="{% url 'app_credit_delete' pk=credit.pk %}"
+                                hx-target="#modal-content" hx-swap="innerHTML"
+                                class="text-sm text-red-400 hover:text-red-600">Suppr.</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-3">
+                    <div>
+                        <p class="text-gray-500">Capital emprunte</p>
+                        <p class="font-medium">{{ credit.capital_emprunte|euro }}</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500">Taux</p>
+                        <p class="font-medium">{{ credit.taux_interet|pct }}</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500">Mensualite</p>
+                        <p class="font-medium">{{ credit.mensualite|euro }}</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500">CRD</p>
+                        <p class="font-medium">{{ credit.capital_restant_du|euro }}</p>
+                    </div>
+                </div>
+                <!-- Barre de progression -->
+                {% if credit.capital_emprunte %}
+                {% widthratio credit.capital_restant_du credit.capital_emprunte 100 as pct_restant %}
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div class="bg-blue-600 h-2 rounded-full" style="width: {{ pct_restant }}%"></div>
+                </div>
+                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>{{ credit.date_debut|date:"m/Y" }}</span>
+                    <span>{{ credit.date_fin|date:"m/Y" }}</span>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-gray-500 py-4 text-center">Aucun credit enregistre.</p>
+        {% endif %}
+    </div>
+
+    <!-- Depenses recentes -->
+    <div>
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Depenses recentes</h3>
+            <button hx-get="{% url 'app_depense_create' immeuble_pk=immeuble.pk %}"
+                    hx-target="#modal-content" hx-swap="innerHTML"
+                    class="inline-flex items-center px-3 py-1.5 text-sm text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                Nouvelle depense
+            </button>
+        </div>
+        {% if depenses %}
+        <!-- Vue mobile -->
+        <div class="space-y-2 lg:hidden">
+            {% for dep in depenses %}
+            <div class="border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-900">{{ dep.libelle }}</p>
+                    <p class="text-xs text-gray-500">{{ dep.date|date:"d/m/Y" }}{% if dep.cle_repartition %} - {{ dep.cle_repartition.nom }}{% endif %}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-semibold text-gray-900">{{ dep.montant|euro }}</span>
+                    <button hx-get="{% url 'app_depense_edit' pk=dep.pk %}"
+                            hx-target="#modal-content" hx-swap="innerHTML"
+                            class="text-blue-500 hover:text-blue-700">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                    </button>
+                    <button hx-get="{% url 'app_depense_delete' pk=dep.pk %}"
+                            hx-target="#modal-content" hx-swap="innerHTML"
+                            class="text-red-400 hover:text-red-600">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Vue desktop -->
+        <div class="hidden lg:block overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Date</th>
+                        <th class="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Libelle</th>
+                        <th class="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Cle</th>
+                        <th class="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Montant</th>
+                        <th class="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for dep in depenses %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="py-2 px-3 text-sm text-gray-600">{{ dep.date|date:"d/m/Y" }}</td>
+                        <td class="py-2 px-3 text-sm text-gray-900">{{ dep.libelle }}</td>
+                        <td class="py-2 px-3 text-sm text-gray-600">{{ dep.cle_repartition.nom|default:"-" }}</td>
+                        <td class="py-2 px-3 text-sm text-right font-medium text-gray-900">{{ dep.montant|euro }}</td>
+                        <td class="py-2 px-3 text-right">
+                            <button hx-get="{% url 'app_depense_edit' pk=dep.pk %}"
+                                    hx-target="#modal-content" hx-swap="innerHTML"
+                                    class="text-sm text-blue-500 hover:text-blue-700 mr-2">Modifier</button>
+                            <button hx-get="{% url 'app_depense_delete' pk=dep.pk %}"
+                                    hx-target="#modal-content" hx-swap="innerHTML"
+                                    class="text-sm text-red-400 hover:text-red-600">Suppr.</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-sm text-gray-500 py-4 text-center">Aucune depense enregistree.</p>
+        {% endif %}
+    </div>
+
+    <!-- Cles de repartition -->
+    <div>
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Cles de repartition</h3>
+            <button hx-get="{% url 'app_cle_create' immeuble_pk=immeuble.pk %}"
+                    hx-target="#modal-content" hx-swap="innerHTML"
+                    class="inline-flex items-center px-3 py-1.5 text-sm text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                Nouvelle cle
+            </button>
+        </div>
+        {% if cles %}
+        <div class="space-y-2">
+            {% for cle in cles %}
+            <div class="border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                    <a href="{% url 'app_cle_detail' pk=cle.pk %}" class="text-sm font-medium text-blue-600 hover:text-blue-800">{{ cle.nom }}</a>
+                    <p class="text-xs text-gray-500">{{ cle.get_mode_repartition_display }}{% if cle.prix_unitaire %} - {{ cle.prix_unitaire }} EUR/unite{% endif %}</p>
+                    <p class="text-xs text-gray-400">{{ cle.quote_parts.count }} quote-part{{ cle.quote_parts.count|pluralize:"s" }}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button hx-get="{% url 'app_cle_edit' pk=cle.pk %}"
+                            hx-target="#modal-content" hx-swap="innerHTML"
+                            class="text-sm text-blue-500 hover:text-blue-700">Modifier</button>
+                    <button hx-get="{% url 'app_cle_delete' pk=cle.pk %}"
+                            hx-target="#modal-content" hx-swap="innerHTML"
+                            class="text-sm text-red-400 hover:text-red-600">Suppr.</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-gray-500 py-4 text-center">Aucune cle de repartition.</p>
+        {% endif %}
+    </div>
+</div>

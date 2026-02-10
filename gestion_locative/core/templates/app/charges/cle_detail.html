@@ -1,0 +1,120 @@
+{% extends "app/base.html" %}
+{% load app_filters %}
+
+{% block title %}{{ cle.nom }} - {{ immeuble.nom }}{% endblock %}
+{% block page_title %}{{ cle.nom }}{% endblock %}
+
+{% block header_actions %}
+<div class="ml-auto flex items-center gap-3">
+    <button hx-get="{% url 'app_cle_edit' pk=cle.pk %}"
+            hx-target="#modal-content" hx-swap="innerHTML"
+            class="inline-flex items-center px-3 py-1.5 text-sm text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+        Modifier
+    </button>
+    <a href="{% url 'app_immeuble_detail' pk=immeuble.pk %}?tab=finances"
+       class="text-sm text-gray-500 hover:text-gray-700">&larr; {{ immeuble.nom }}</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Info cle -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+            <span class="text-xs text-gray-500">Mode de repartition</span>
+            <p class="text-sm font-medium text-gray-900">{{ cle.get_mode_repartition_display }}</p>
+        </div>
+        {% if cle.prix_unitaire %}
+        <div>
+            <span class="text-xs text-gray-500">Prix unitaire</span>
+            <p class="text-sm font-medium text-gray-900">{{ cle.prix_unitaire }} EUR</p>
+        </div>
+        {% endif %}
+        <div>
+            <span class="text-xs text-gray-500">Total tantiemes</span>
+            <p class="text-sm font-medium text-gray-900">{{ total_tantiemes }}</p>
+        </div>
+    </div>
+</div>
+
+<!-- Quotes-parts -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200">
+    <div class="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-gray-700">Quotes-parts par local</h3>
+        <button hx-get="{% url 'app_quotepart_create' cle_pk=cle.pk %}"
+                hx-target="#modal-content" hx-swap="innerHTML"
+                class="inline-flex items-center px-3 py-1.5 text-sm text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+            Ajouter
+        </button>
+    </div>
+
+    {% if quotes_data %}
+    <!-- Vue mobile -->
+    <div class="p-5 space-y-2 lg:hidden">
+        {% for item in quotes_data %}
+        <div class="border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-900">{{ item.qp.local.numero_porte }} ({{ item.qp.local.get_type_local_display }})</p>
+                <p class="text-xs text-gray-500">{{ item.qp.valeur }} tantiemes - {{ item.pourcentage }}%</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button hx-get="{% url 'app_quotepart_edit' pk=item.qp.pk %}"
+                        hx-target="#modal-content" hx-swap="innerHTML"
+                        class="text-sm text-blue-500 hover:text-blue-700">Modifier</button>
+                <button hx-get="{% url 'app_quotepart_delete' pk=item.qp.pk %}"
+                        hx-target="#modal-content" hx-swap="innerHTML"
+                        class="text-sm text-red-400 hover:text-red-600">Suppr.</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Vue desktop -->
+    <div class="hidden lg:block overflow-x-auto">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Local</th>
+                    <th class="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Type</th>
+                    <th class="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Tantiemes</th>
+                    <th class="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">%</th>
+                    <th class="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for item in quotes_data %}
+                <tr class="hover:bg-gray-50">
+                    <td class="py-3 px-4 text-sm font-medium text-gray-900">{{ item.qp.local.numero_porte }}</td>
+                    <td class="py-3 px-4 text-sm text-gray-600">{{ item.qp.local.get_type_local_display }}</td>
+                    <td class="py-3 px-4 text-sm text-right text-gray-900">{{ item.qp.valeur }}</td>
+                    <td class="py-3 px-4 text-sm text-right text-gray-600">{{ item.pourcentage }}%</td>
+                    <td class="py-3 px-4 text-right">
+                        <button hx-get="{% url 'app_quotepart_edit' pk=item.qp.pk %}"
+                                hx-target="#modal-content" hx-swap="innerHTML"
+                                class="text-sm text-blue-500 hover:text-blue-700 mr-2">Modifier</button>
+                        <button hx-get="{% url 'app_quotepart_delete' pk=item.qp.pk %}"
+                                hx-target="#modal-content" hx-swap="innerHTML"
+                                class="text-sm text-red-400 hover:text-red-600">Suppr.</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="border-t-2 border-gray-300">
+                    <td class="py-3 px-4 text-sm font-semibold text-gray-900" colspan="2">Total</td>
+                    <td class="py-3 px-4 text-sm text-right font-semibold text-gray-900">{{ total_tantiemes }}</td>
+                    <td class="py-3 px-4 text-sm text-right font-semibold text-gray-900">100%</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% else %}
+    <div class="p-8 text-center text-gray-500">
+        <p>Aucune quote-part definie.</p>
+        <p class="text-sm mt-1">Ajoutez des quotes-parts pour chaque local concerne.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

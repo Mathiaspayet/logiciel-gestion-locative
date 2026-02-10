@@ -8,17 +8,20 @@
 
 **Quoi** : Application de gestion locative professionnelle pour propriétaires français.
 
-**Stack** : Django 6.0 + Python 3.14 + SQLite + ReportLab
+**Stack** : Django 6.0 + Python 3.14 + SQLite + ReportLab + HTMX + Tailwind CSS
 
 **Utilisateurs** : Propriétaires/Gestionnaires immobiliers (SCI, particuliers)
 
-**Fonctionnalités Clés** :
-- Gestion patrimoine (immeubles, locaux, baux)
-- Génération documents PDF (quittances, régularisations, avis d'échéance)
-- **Historique tarifaire complet** (v2.0) - changements loyers/charges tracés
-- Régularisation charges au prorata temporis
-- Révision loyers IRL/ILC
-- **Assistant Crédit Immobilier** - Calcul automatique des données manquantes
+**Fonctionnalites Cles** :
+- **Interface custom complete** (v3.0) - Navigation centree sur les biens, CRUD complet pour 13 modeles (HTMX + Tailwind + Chart.js)
+- Dashboard portfolio avec KPIs et cartes immeubles
+- Dashboard patrimoine avec graphiques et projection 10 ans
+- Bilan fiscal annuel par immeuble (declaration 2044)
+- Generation documents PDF (quittances, regularisations, avis d'echeance)
+- **Historique tarifaire complet** (v2.0) - changements loyers/charges traces
+- Regularisation charges au prorata temporis
+- Revision loyers IRL/ILC
+- **Assistant Credit Immobilier** - Calcul automatique des donnees manquantes
 
 ---
 
@@ -37,7 +40,8 @@ cd "D:\...\logiciel gestion locative"
 3_LANCER_LOGICIEL.bat
 
 # 4. Accéder à l'interface
-http://127.0.0.1:8000/admin/
+http://127.0.0.1:8000/app/    # Interface custom
+# ou http://127.0.0.1:8000/admin/  # Admin legacy
 ```
 
 ### Linux/Mac
@@ -61,7 +65,8 @@ python manage.py createsuperuser
 python manage.py runserver
 
 # 6. Accéder à l'interface
-http://127.0.0.1:8000/admin/
+http://127.0.0.1:8000/app/    # Interface custom
+# ou http://127.0.0.1:8000/admin/  # Admin legacy
 ```
 
 ---
@@ -71,22 +76,28 @@ http://127.0.0.1:8000/admin/
 ```
 gestion_locative/
 ├── core/
-│   ├── models.py          ⭐ MODÈLES - 18 modèles (Bail, BailTarification, CreditImmobilier...)
-│   ├── views.py           ⭐ VUES - Fonctions génération documents PDF + dashboards
-│   ├── pdf_generator.py   📄 GÉNÉRATEUR - Classe PDFGenerator
-│   ├── calculators.py     🧮 CALCULATEURS - Logique métier baux
-│   ├── patrimoine_calculators.py  📊 CALCULATEURS - Patrimoine, rentabilité, crédits
-│   ├── exceptions.py      ❗ EXCEPTIONS - TarificationNotFoundError, etc.
-│   ├── admin.py           ⭐ ADMIN - 16+ classes admin + actions
-│   ├── urls.py            🔗 Routes (11 endpoints)
-│   └── migrations/        📂 Historique BDD (0011-0016 importants)
+│   ├── models.py          # 18 modeles (Bail, BailTarification, CreditImmobilier...)
+│   ├── views.py           # Vues generation documents PDF + dashboards admin
+│   ├── views_app.py       # ~50 vues interface custom (/app/) - CRUD, onglets, patrimoine
+│   ├── urls_app.py        # 88 routes interface custom
+│   ├── forms.py           # 14 ModelForms (CRUD tous les modeles)
+│   ├── context_processors.py # Navigation sidebar (liste immeubles)
+│   ├── templatetags/app_filters.py # Filtres |euro, |pct
+│   ├── pdf_generator.py   # Classe PDFGenerator
+│   ├── calculators.py     # Logique metier baux (BailCalculator)
+│   ├── patrimoine_calculators.py  # Patrimoine, rentabilite, fiscalite
+│   ├── exceptions.py      # TarificationNotFoundError, etc.
+│   ├── admin.py           # 16+ classes admin + actions
+│   ├── urls.py            # Routes admin/PDF (11 endpoints)
+│   ├── templates/app/     # 20 templates interface custom (Tailwind + HTMX)
+│   └── migrations/        # Historique BDD (0011-0017 importants)
 ├── gestion_locative/
-│   └── settings.py        ⚙️ Configuration Django
-├── db.sqlite3             💾 BASE DE DONNÉES
-├── README.md              📖 Doc utilisateur
-├── DOCUMENTATION_TECHNIQUE.md  📚 Doc complète (LIRE EN PRIORITÉ)
-├── CHANGELOG.md           📝 Historique des modifications
-└── QUICK_START.md         ⚡ Ce fichier
+│   └── settings.py        # Configuration Django
+├── db.sqlite3             # Base de donnees SQLite
+├── README.md              # Doc utilisateur
+├── DOCUMENTATION_TECHNIQUE.md  # Doc complete (LIRE EN PRIORITE)
+├── CHANGELOG.md           # Historique des modifications
+└── QUICK_START.md         # Ce fichier
 ```
 
 ---
@@ -210,56 +221,58 @@ return redirect('creer_tarification_from_revision')
 
 ## 🔍 Scénarios d'Usage Typiques
 
-### Scénario 1 : Générer une Quittance
+### Scenario 1 : Navigation quotidienne (interface custom)
 
 ```
-Admin → Baux → Sélectionner bail → Action "Télécharger quittance PDF"
-→ Formulaire : Sélectionner périodes
-→ Cliquer "Générer"
-→ PDF téléchargé
+/app/ → Dashboard portfolio (KPIs globaux + cartes immeubles)
+→ Cliquer sur un immeuble → Vue detaillee (5 onglets)
+→ Onglet Locaux → Cliquer sur un bail → Vue detaillee bail (4 onglets)
+→ Onglet Documents → Generer quittance PDF
 ```
 
-**Code impliqué** : `views.py::generer_quittance_pdf` (lignes 31-319)
+**Code implique** : `views_app.py` (dashboard_view, immeuble_detail_view, bail_detail_view)
 
-### Scénario 2 : Réviser un Loyer IRL
-
-```
-Admin → Baux → Sélectionner bail → Action "Révision du Loyer"
-→ Formulaire : Nouvel indice IRL, trimestre
-→ Cocher "Mettre à jour le loyer"
-→ Redirection vers formulaire de validation
-→ Modifier si besoin, valider
-→ Nouvelle tarification créée + PDF notification
-```
-
-**Code impliqué** :
-- `views.py::generer_revision_loyer_pdf` (lignes 1003-1249)
-- `views.py::creer_tarification_from_revision` (lignes 1460-1643)
-
-### Scénario 3 : Calculer Régularisation Charges
+### Scenario 2 : Ajouter une depense rapidement
 
 ```
-Admin → Baux → Sélectionner bail → Action "Générer Régularisation Charges"
-→ Formulaire : Année N-1, montant réel charges
-→ Cocher "Enregistrer dans historique" (optionnel)
-→ PDF généré avec calcul détaillé
-→ Si enregistré : visible dans Admin → Régularisations
+/app/depenses/ajouter/ (ou bouton dans sidebar)
+→ Remplir : Bien, Montant, Description, Date
+→ Options avancees : Cle repartition, Periode
+→ Enregistrer → Confirmation
 ```
 
-**Code impliqué** : `views.py::generer_regularisation_pdf` (lignes 556-1001)
+**Code implique** : `views_app.py::depense_quick_add_view`, `forms.py::DepenseQuickForm`
 
-### Scénario 4 : Créer une Nouvelle Tarification Manuellement
+### Scenario 3 : CRUD via modal (exemple : ajouter un local)
 
 ```
-Admin → Tarifications → Ajouter
-→ Remplir : Bail, Date début, Loyer, Charges, Taxes, Motif
-→ Sauvegarder
-
-⚠️ IMPORTANT : Fermer l'ancienne tarification
-Admin → Tarifications → Sélectionner ancienne → date_fin = veille nouvelle
+/app/immeubles/1/ → Onglet Locaux → Bouton "Nouveau local"
+→ Modal s'ouvre avec formulaire
+→ Remplir et sauvegarder → Modal se ferme, page rafraichie
 ```
 
-**Code impliqué** : `models.py::BailTarification.clean()` (validation)
+**Code implique** : `views_app.py::local_create_view`, `forms.py::LocalForm`
+
+### Scenario 4 : Generer une Quittance (via admin legacy)
+
+```
+/admin/ → Baux → Selectionner bail → Action "Telecharger quittance PDF"
+→ Formulaire : Selectionner periodes
+→ Cliquer "Generer"
+→ PDF telecharge
+```
+
+**Code implique** : `views.py::generer_quittance_pdf`
+
+### Scenario 5 : Consulter le bilan fiscal
+
+```
+/app/patrimoine/ → Dashboard patrimoine (graphiques, KPIs)
+→ Cliquer "Bilan fiscal" sur un immeuble
+→ Selecteur annee → Revenus, Charges deductibles, Resultat foncier
+```
+
+**Code implique** : `views_app.py::bilan_fiscal_view`, `patrimoine_calculators.py::FiscaliteCalculator`
 
 ---
 
@@ -366,14 +379,15 @@ Pour approfondir, consulter dans l'ordre :
 
 1. **README.md** (5 min) - Vue d'ensemble fonctionnalités
 2. **Ce fichier QUICK_START.md** (10 min) - Prise en main rapide
-3. **DOCUMENTATION_TECHNIQUE.md** (30-60 min) - Tout le détail
-   - Section 1-2 : Architecture & Modèles
-   - Section 3 : Système historique tarifaire
+3. **DOCUMENTATION_TECHNIQUE.md** (30-60 min) - Tout le detail
+   - Section 1-2 : Architecture & Modeles
+   - Section 3 : Systeme historique tarifaire
    - Section 4 : Fonctions PDF (algorithmes)
    - Section 8 : Debugging
-   - Section 9 : Assistant Crédit Immobilier
+   - Section 9 : Assistant Credit Immobilier
    - Section 10 : Dashboards Patrimoine
-   - Section 11 : Évolutions futures
+   - Section 11 : Interface Custom (routes, templates, CRUD, patterns HTMX)
+   - Section 12 : Evolutions futures
 4. **CHANGELOG.md** - Historique des modifications
 
 ---
@@ -429,44 +443,48 @@ for bail in baux:
 
 ---
 
-## 🎯 Checklist Premier Jour
+## Checklist Premier Jour
 
 - [ ] Lire README.md (vue d'ensemble)
 - [ ] Lire ce QUICK_START.md
 - [ ] Installer et lancer le projet en local
-- [ ] Se connecter à l'admin (créer superuser)
-- [ ] Explorer l'interface : Baux, Tarifications, Régularisations
-- [ ] Générer une quittance test
-- [ ] Lire Section 3 de DOCUMENTATION_TECHNIQUE.md (système historique)
-- [ ] Consulter `models.py` lignes 57-219 (Bail + BailTarification)
-- [ ] Consulter `views.py` lignes 31-319 (generer_quittance_pdf)
+- [ ] Se connecter sur `/app/` (creer superuser si besoin)
+- [ ] Explorer le dashboard portfolio et cliquer sur un immeuble
+- [ ] Naviguer les 5 onglets immeuble et les 4 onglets bail
+- [ ] Tester le CRUD modal (ajouter/modifier/supprimer une entite)
+- [ ] Explorer le dashboard patrimoine et le bilan fiscal
+- [ ] Lire Section 3 de DOCUMENTATION_TECHNIQUE.md (systeme historique)
+- [ ] Lire Section 11 de DOCUMENTATION_TECHNIQUE.md (interface custom)
+- [ ] Consulter `models.py` (Bail + BailTarification)
+- [ ] Consulter `views_app.py` (vues interface custom)
 
-**Temps estimé** : 2-3 heures pour être opérationnel
+**Temps estime** : 2-3 heures pour etre operationnel
 
 ---
 
-## 💡 Conseils pour une IA
+## Conseils pour une IA
 
 **Pour comprendre rapidement** :
 1. Commencer par lire ce fichier (Quick Start)
-2. Lire Section 3 de DOCUMENTATION_TECHNIQUE.md (Système d'historique tarifaire)
-3. Lire le code de `models.py` (BailTarification)
-4. Regarder un exemple de fonction PDF (`generer_quittance_pdf`)
+2. Lire Section 3 de DOCUMENTATION_TECHNIQUE.md (Systeme d'historique tarifaire)
+3. Lire Section 11 de DOCUMENTATION_TECHNIQUE.md (Interface custom, CRUD patterns)
+4. Lire le code de `models.py` (BailTarification)
+5. Regarder `views_app.py` pour comprendre le pattern CRUD modal HTMX
 
 **Pour modifier du code** :
 1. Toujours faire un backup de `db.sqlite3` d'abord
-2. Vérifier dans DOCUMENTATION_TECHNIQUE.md si le cas est documenté
+2. Verifier dans DOCUMENTATION_TECHNIQUE.md si le cas est documente
 3. Utiliser `python manage.py shell` pour tester la logique
-4. Créer migration si modification des modèles
-5. Tester la génération PDF après modification
+4. Creer migration si modification des modeles
+5. Tester la generation PDF apres modification
 
-**Pour ajouter une fonctionnalité** :
-1. Consulter Section 10 de DOCUMENTATION_TECHNIQUE.md (Évolutions futures)
-2. Exemples de code souvent déjà fournis
-3. Respecter les patterns existants (properties, validation, etc.)
+**Pour ajouter une fonctionnalite** :
+1. Consulter Section 12 de DOCUMENTATION_TECHNIQUE.md (Evolutions futures)
+2. Suivre le pattern CRUD modal existant (Section 11.7)
+3. Respecter les patterns existants (decorateur `_apply_css`, `_modal_success()`, `_modal_form_response()`)
 
 ---
 
-**Dernière mise à jour** : Février 2026 (v2.1)
+**Dernière mise à jour** : Février 2026 (v3.0 - Interface Custom)
 **Difficulté de prise en main** : Moyenne (Django intermédiaire requis)
 **Temps pour être autonome** : 1 journée

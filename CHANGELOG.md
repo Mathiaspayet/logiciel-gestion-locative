@@ -1,5 +1,113 @@
 # Changelog - Gestion Locative
 
+## [2026-02-08] - Interface Custom v3.0 (Phases 0-7 completes)
+
+### Objectif
+Remplacement de l'interface Django Admin par une interface utilisateur sur mesure, centree sur les biens immobiliers, avec une experience mobile-first.
+
+### Stack Technique
+- **Frontend** : Django Templates + HTMX (interactivite) + Tailwind CSS (CDN) + Chart.js (graphiques)
+- **Architecture** : Nouveaux fichiers dans `core/` (pas de nouvelle app Django)
+- **Coexistence** : Nouvelle UI sous `/app/`, admin Django reste accessible sous `/admin/`
+
+### Nouveaux Fichiers
+
+**Python** :
+- `core/views_app.py` - Vues de l'interface custom (~50 vues : dashboard, CRUD, onglets, patrimoine)
+- `core/urls_app.py` - 88 routes `/app/...`
+- `core/forms.py` - 14 ModelForms (Immeuble, Local, Bail, BailTarification, Occupant, EstimationValeur, CreditImmobilier, Depense, CleRepartition, QuotePart, Consommation, Regularisation, Ajustement, DepenseQuickForm)
+- `core/context_processors.py` - Injection navigation (liste immeubles sidebar)
+- `core/templatetags/__init__.py` + `app_filters.py` - Filtres `|euro` et `|pct`
+
+**Templates** (20 fichiers) :
+- `core/templates/app/base.html` - Layout principal (sidebar responsive, Tailwind/HTMX CDN, modal container)
+- `core/templates/app/_modal_form.html` - Template modal generique pour CRUD
+- `core/templates/app/_modal_confirm_delete.html` - Confirmation suppression
+- `core/templates/app/auth/login.html` - Page de connexion custom
+- `core/templates/app/dashboard/index.html` - Dashboard portfolio (KPIs + cartes immeubles)
+- `core/templates/app/depenses/quick_add.html` - Formulaire rapide ajout depense (mobile-first)
+- `core/templates/app/immeubles/detail.html` - Vue detaillee immeuble (5 onglets HTMX)
+- `core/templates/app/immeubles/_tab_general.html` - Onglet informations generales
+- `core/templates/app/immeubles/_tab_locaux.html` - Onglet locaux (cartes mobile / tableau desktop)
+- `core/templates/app/immeubles/_tab_finances.html` - Onglet credits, depenses, cles de repartition
+- `core/templates/app/immeubles/_tab_consommations.html` - Onglet releves de compteurs
+- `core/templates/app/immeubles/_tab_estimations.html` - Onglet historique estimations
+- `core/templates/app/baux/detail.html` - Vue detaillee bail (4 onglets HTMX)
+- `core/templates/app/baux/_tab_info.html` - Onglet informations + tarifications
+- `core/templates/app/baux/_tab_occupants.html` - Onglet locataires et garants
+- `core/templates/app/baux/_tab_regularisations.html` - Onglet regularisations + ajustements
+- `core/templates/app/baux/_tab_documents.html` - Onglet generation PDF
+- `core/templates/app/patrimoine/dashboard.html` - Dashboard patrimoine (graphiques Chart.js)
+- `core/templates/app/patrimoine/bilan_fiscal.html` - Bilan fiscal annuel par immeuble
+- `core/templates/app/charges/cle_detail.html` - Detail cle de repartition + quotes-parts
+
+### Fichiers Modifies
+- `gestion_locative/settings.py` - Context processor, LOGIN_URL, LOGIN_REDIRECT_URL
+- `gestion_locative/urls.py` - Ajout `/app/` + redirect racine `/` vers `/app/`
+
+### Fonctionnalites
+
+1. **Dashboard Portfolio** (`/app/`)
+   - 4 KPIs globaux : valeur patrimoine, CRD, valeur nette, cashflow mensuel
+   - Grille de cartes immeubles cliquables (rendement, cashflow, taux occupation)
+   - Bouton d'acces rapide "Ajouter une depense"
+
+2. **Vue Detaillee Immeuble** (`/app/immeubles/<id>/`)
+   - KPIs par immeuble en haut de page (valeur, valeur nette, rendement, cashflow)
+   - 5 onglets charges via HTMX (sans rechargement) :
+     - General : infos, acquisition, regime fiscal, indicateurs financiers
+     - Locaux : tableau lots avec statut occupation, locataire, loyer + CRUD
+     - Finances : credits, depenses, cles de repartition + CRUD complet
+     - Consommations : releves de compteurs + CRUD
+     - Estimations : historique des valorisations + CRUD
+
+3. **Vue Detaillee Bail** (`/app/baux/<id>/`)
+   - Informations bail et locataire principal
+   - 4 onglets via HTMX :
+     - Informations : details bail + historique tarifications + CRUD
+     - Occupants : locataires et garants + CRUD
+     - Regularisations : regularisations + ajustements + CRUD
+     - Documents : generation PDF (quittances, avis, regularisation, solde, revision)
+
+4. **CRUD Complet via Modals HTMX** (13 modeles)
+   - Immeuble, Local, Bail, BailTarification, Occupant
+   - EstimationValeur, CreditImmobilier, Depense
+   - CleRepartition, QuotePart, Consommation
+   - Regularisation, Ajustement
+   - Pattern : bouton → hx-get charge formulaire dans modal → hx-post sauvegarde → HX-Trigger ferme modal et rafraichit la page
+
+5. **Pages Patrimoine**
+   - Dashboard patrimoine (`/app/patrimoine/`) : KPIs, graphiques Chart.js, projection 10 ans
+   - Bilan fiscal par immeuble (`/app/immeubles/<id>/fiscal/`) : revenus, charges deductibles, resultat foncier, declaration 2044
+
+6. **Navigation**
+   - Sidebar responsive (hamburger menu sur mobile)
+   - Liste des immeubles cliquables dans la sidebar
+   - Lien patrimoine dans la sidebar
+   - Page de connexion custom (`/app/login/`)
+   - Formulaire rapide depense (`/app/depenses/ajouter/`) - mobile-first
+
+### Calculateurs Reutilises
+- `PatrimoineCalculator` : valeur actuelle, CRD, valeur nette, plus-value
+- `RentabiliteCalculator` : rendement brut/net, cashflow, charges/interets annuels
+- `RatiosCalculator` : taux occupation/vacance
+- `FiscaliteCalculator` : bilan fiscal annuel (revenus, charges, resultat foncier)
+
+### Phases Completees
+
+| Phase | Description | Statut |
+|-------|-------------|--------|
+| Phase 0 | Fondation (branche, squelette, login, layout) | Termine |
+| Phase 1 | Dashboard avec vraies donnees + depense rapide | Termine |
+| Phase 2 | Vue detaillee immeuble (onglets HTMX) | Termine |
+| Phase 3 | Vue detaillee bail + generation PDF | Termine |
+| Phase 4 | CRUD via modals HTMX (tous les modeles principaux) | Termine |
+| Phase 5 | Migration vues patrimoine (dashboard, bilan fiscal) | Termine |
+| Phase 6 | Gestion charges + CRUD avance (7 modeles supplementaires) | Termine |
+| Phase 7 | Polish (onglet consommations, cleanup) | Termine |
+
+---
+
 ## [2026-02-05] - Audit et Corrections v2.1
 
 ### 🎯 Objectif

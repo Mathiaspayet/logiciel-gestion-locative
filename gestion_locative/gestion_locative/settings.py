@@ -70,6 +70,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'core.context_processors.navigation_context',
             ],
         },
     },
@@ -130,6 +131,10 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Auth redirections (interface custom)
+LOGIN_URL = '/app/login/'
+LOGIN_REDIRECT_URL = '/app/'
 
 # =============================================================================
 # SECURITY SETTINGS

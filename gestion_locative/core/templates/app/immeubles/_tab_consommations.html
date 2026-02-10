@@ -1,0 +1,92 @@
+{% load app_filters %}
+
+<div class="p-5">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Releves de compteurs</h3>
+        <button hx-get="{% url 'app_consommation_create' immeuble_pk=immeuble.pk %}"
+                hx-target="#modal-content"
+                hx-swap="innerHTML"
+                class="inline-flex items-center px-3 py-1.5 text-sm text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+            Nouveau releve
+        </button>
+    </div>
+    {% if consommations %}
+    <!-- Vue mobile -->
+    <div class="space-y-3 lg:hidden">
+        {% for conso in consommations %}
+        <div class="border border-gray-200 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-2">
+                <span class="font-medium text-gray-900">{{ conso.local.numero_porte }}</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{{ conso.cle_repartition.nom }}</span>
+            </div>
+            <div class="text-sm space-y-1">
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Date releve</span>
+                    <span class="text-gray-900">{{ conso.date_releve|date:"d/m/Y" }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Index</span>
+                    <span class="text-gray-900">{{ conso.index_debut }} &rarr; {{ conso.index_fin }}</span>
+                </div>
+                <div class="flex justify-between font-medium">
+                    <span class="text-gray-500">Quantite</span>
+                    <span class="text-gray-900">{{ conso.quantite }}</span>
+                </div>
+            </div>
+            <div class="mt-2 pt-2 border-t border-gray-100 flex gap-3">
+                <button hx-get="{% url 'app_consommation_edit' pk=conso.pk %}"
+                        hx-target="#modal-content" hx-swap="innerHTML"
+                        class="text-sm text-blue-500 hover:text-blue-700">Modifier</button>
+                <button hx-get="{% url 'app_consommation_delete' pk=conso.pk %}"
+                        hx-target="#modal-content" hx-swap="innerHTML"
+                        class="text-sm text-red-400 hover:text-red-600">Suppr.</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Vue desktop -->
+    <div class="hidden lg:block overflow-x-auto">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b border-gray-200">
+                    <th class="text-left py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Local</th>
+                    <th class="text-left py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Type</th>
+                    <th class="text-left py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Date releve</th>
+                    <th class="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Ancien index</th>
+                    <th class="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Nouvel index</th>
+                    <th class="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Quantite</th>
+                    <th class="text-right py-3 px-3 text-xs font-semibold text-gray-500 uppercase"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for conso in consommations %}
+                <tr class="hover:bg-gray-50">
+                    <td class="py-3 px-3 text-sm font-medium text-gray-900">{{ conso.local.numero_porte }}</td>
+                    <td class="py-3 px-3">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{{ conso.cle_repartition.nom }}</span>
+                    </td>
+                    <td class="py-3 px-3 text-sm text-gray-600">{{ conso.date_releve|date:"d/m/Y" }}</td>
+                    <td class="py-3 px-3 text-sm text-right text-gray-600">{{ conso.index_debut }}</td>
+                    <td class="py-3 px-3 text-sm text-right text-gray-900">{{ conso.index_fin }}</td>
+                    <td class="py-3 px-3 text-sm text-right font-medium text-gray-900">{{ conso.quantite }}</td>
+                    <td class="py-3 px-3 text-right">
+                        <button hx-get="{% url 'app_consommation_edit' pk=conso.pk %}"
+                                hx-target="#modal-content" hx-swap="innerHTML"
+                                class="text-sm text-blue-500 hover:text-blue-700 mr-2">Modifier</button>
+                        <button hx-get="{% url 'app_consommation_delete' pk=conso.pk %}"
+                                hx-target="#modal-content" hx-swap="innerHTML"
+                                class="text-sm text-red-400 hover:text-red-600">Suppr.</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-8 text-gray-500">
+        <p>Aucun releve de compteur enregistre.</p>
+    </div>
+    {% endif %}
+</div>

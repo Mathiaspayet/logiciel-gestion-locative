@@ -8,7 +8,7 @@ Une application professionnelle et complète pour gérer vos biens immobiliers, 
 2.  **Mise à jour :** Si vous modifiez le code, lancez `2_MISE_A_JOUR.bat`.
 3.  **Lancement :** Double-cliquez sur `3_LANCER_LOGICIEL.bat`.
 
-L'interface d'administration s'ouvrira automatiquement dans votre navigateur à l'adresse : `http://127.0.0.1:8000/admin/`
+L'interface s'ouvrira automatiquement dans votre navigateur à l'adresse : `http://127.0.0.1:8000/app/` (nouvelle interface) ou `http://127.0.0.1:8000/admin/` (admin Django legacy).
 
 ## ✨ Fonctionnalités Principales
 
@@ -50,8 +50,8 @@ L'interface d'administration s'ouvrira automatiquement dans votre navigateur à 
 *   **Backend :** Django 6.0 (Python 3.x)
 *   **Base de données :** SQLite (production) / PostgreSQL compatible
 *   **PDF :** ReportLab
-*   **Admin :** Django Admin avec Jazzmin
-*   **Interface :** Templates Django
+*   **Interface custom :** Django Templates + HTMX + Tailwind CSS + Chart.js (accessible sur `/app/`)
+*   **Admin legacy :** Django Admin avec Jazzmin (accessible sur `/admin/`)
 
 ### Modèles Principaux
 
@@ -143,6 +143,20 @@ python manage.py migrate core 0013
 ```
 
 ## 📝 Changelog
+
+### Version 3.0 (Fevrier 2026) - Interface Custom Complete
+- ✅ Nouvelle interface utilisateur sur mesure (Django Templates + HTMX + Tailwind CSS + Chart.js)
+- ✅ Dashboard portfolio avec KPIs (valeur patrimoine, CRD, valeur nette, cashflow)
+- ✅ Navigation centree sur les biens immobiliers (click immeuble → onglets)
+- ✅ Vue detaillee immeuble avec 5 onglets HTMX (General, Locaux, Finances, Consommations, Estimations)
+- ✅ Vue detaillee bail avec 4 onglets HTMX (Informations, Occupants, Regularisations, Documents)
+- ✅ CRUD complet via modals HTMX pour 13 modeles (Immeuble, Local, Bail, Tarification, Occupant, Estimation, Credit, Depense, Cle, QuotePart, Consommation, Regularisation, Ajustement)
+- ✅ Dashboard patrimoine avec graphiques Chart.js et projection 10 ans
+- ✅ Bilan fiscal annuel par immeuble (revenus, charges deductibles, declaration 2044)
+- ✅ Formulaire rapide d'ajout de depense optimise mobile
+- ✅ Page de connexion custom + sidebar responsive
+- ✅ 88 routes, 20 templates, 14 formulaires
+- ✅ Coexistence avec l'admin Django legacy (/admin/)
 
 ### Version 2.1 (Février 2026)
 - ✅ Dashboard Patrimoine avec graphiques et projection 10 ans

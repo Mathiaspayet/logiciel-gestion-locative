@@ -1,0 +1,109 @@
+{% extends "app/base.html" %}
+{% load app_filters %}
+
+{% block title %}Ajouter une depense - Gestion Locative{% endblock %}
+{% block page_title %}Nouvelle depense{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto">
+    <form method="post" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        {% csrf_token %}
+
+        <div class="p-5 space-y-4">
+            {% if form.errors %}
+            <div class="px-4 py-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200">
+                Veuillez corriger les erreurs ci-dessous.
+            </div>
+            {% endif %}
+
+            <!-- Montant (en premier, le plus important sur mobile) -->
+            <div>
+                <label for="id_montant" class="block text-sm font-medium text-gray-700 mb-1">
+                    Montant *
+                </label>
+                {{ form.montant }}
+                {% if form.montant.errors %}
+                <p class="mt-1 text-sm text-red-600">{{ form.montant.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Libelle -->
+            <div>
+                <label for="id_libelle" class="block text-sm font-medium text-gray-700 mb-1">
+                    Description *
+                </label>
+                {{ form.libelle }}
+                {% if form.libelle.errors %}
+                <p class="mt-1 text-sm text-red-600">{{ form.libelle.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Immeuble -->
+            <div>
+                <label for="id_immeuble" class="block text-sm font-medium text-gray-700 mb-1">
+                    Bien *
+                </label>
+                {{ form.immeuble }}
+                {% if form.immeuble.errors %}
+                <p class="mt-1 text-sm text-red-600">{{ form.immeuble.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Date -->
+            <div>
+                <label for="id_date" class="block text-sm font-medium text-gray-700 mb-1">
+                    Date *
+                </label>
+                {{ form.date }}
+                {% if form.date.errors %}
+                <p class="mt-1 text-sm text-red-600">{{ form.date.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Section optionnelle (repliable) -->
+            <details class="border border-gray-200 rounded-lg">
+                <summary class="px-4 py-3 text-sm font-medium text-gray-600 cursor-pointer select-none">
+                    Options avancees
+                </summary>
+                <div class="px-4 pb-4 pt-2 space-y-4 border-t border-gray-100">
+                    <!-- Cle de repartition -->
+                    <div>
+                        <label for="id_cle_repartition" class="block text-sm font-medium text-gray-700 mb-1">
+                            Cle de repartition
+                        </label>
+                        {{ form.cle_repartition }}
+                    </div>
+
+                    <!-- Periode -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label for="id_date_debut" class="block text-sm font-medium text-gray-700 mb-1">
+                                Debut periode
+                            </label>
+                            {{ form.date_debut }}
+                        </div>
+                        <div>
+                            <label for="id_date_fin" class="block text-sm font-medium text-gray-700 mb-1">
+                                Fin periode
+                            </label>
+                            {{ form.date_fin }}
+                        </div>
+                    </div>
+                </div>
+            </details>
+        </div>
+
+        <!-- Boutons (sticky en bas sur mobile) -->
+        <div class="sticky bottom-0 bg-gray-50 border-t border-gray-200 p-4 flex gap-3">
+            <a href="{% url 'app_dashboard' %}"
+               class="flex-1 text-center px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-100 transition-colors">
+                Annuler
+            </a>
+            <button type="submit"
+                    class="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
+                Enregistrer
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

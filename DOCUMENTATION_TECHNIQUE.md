@@ -1,6 +1,6 @@
 # Documentation Technique - Système de Gestion Locative
 
-**Version** : 2.1 (Gestion Patrimoniale)
+**Version** : 3.0 (Interface Custom)
 **Dernière mise à jour** : Février 2026
 
 ---
@@ -16,12 +16,21 @@
 7. [Guide de Maintenance](#7-guide-de-maintenance)
 8. [Debugging et Troubleshooting](#8-debugging-et-troubleshooting)
 9. [Assistant Crédit Immobilier](#9-assistant-crédit-immobilier)
-10. [Dashboards Patrimoine](#10-dashboards-patrimoine) ⭐ NOUVEAU (v2.1)
+10. [Dashboards Patrimoine](#10-dashboards-patrimoine) (v2.1)
     - 10.1 Dashboard Patrimoine Global
     - 10.2 Dashboard Détail Immeuble
     - 10.3 Modèles Patrimoine
     - 10.4 Bilan Fiscal par Immeuble
-11. [Évolutions Futures](#11-évolutions-futures)
+11. [Interface Custom](#11-interface-custom) (v3.0 - Complete)
+    - 11.1 Architecture et Stack
+    - 11.2 Structure des Fichiers
+    - 11.3 Routes et Vues
+    - 11.4 Templates et Composants
+    - 11.5 Patterns HTMX
+    - 11.6 Formulaires (ModelForms)
+    - 11.7 CRUD Modal Pattern
+    - 11.8 Pages Patrimoine
+12. [Évolutions Futures](#12-évolutions-futures)
 
 ---
 
@@ -33,7 +42,8 @@
 *   **Framework Web** : Django 6.0
 *   **Base de Données** : SQLite (développement) / PostgreSQL compatible
 *   **Génération PDF** : ReportLab
-*   **Interface Admin** : Django Admin avec Jazzmin 3.0.1
+*   **Interface Admin (legacy)** : Django Admin avec Jazzmin 3.0.1 (accessible sur `/admin/`)
+*   **Interface Custom (v3.0)** : Django Templates + HTMX + Tailwind CSS (accessible sur `/app/`)
 *   **Templates** : Django Templates
 
 ### 1.2 Structure du Projet
@@ -50,8 +60,18 @@ logiciel gestion locative/
 │   │   ├── calculators.py     # Calculateurs métier (BailCalculator)
 │   │   ├── patrimoine_calculators.py  # Calculateurs patrimoine
 │   │   ├── exceptions.py      # Exceptions personnalisées
-│   │   ├── templates/         # 9 templates HTML
-│   │   └── migrations/        # 16 migrations
+│   │   ├── views_app.py       # Vues interface custom (/app/)
+│   │   ├── urls_app.py        # Routes interface custom
+│   │   ├── forms.py           # 14 ModelForms (CRUD interface custom)
+│   │   ├── context_processors.py # Navigation context (sidebar)
+│   │   ├── templatetags/
+│   │   │   └── app_filters.py # Filtres templates (|euro, |pct)
+│   │   ├── templates/
+│   │   │   ├── app/           # Templates interface custom (Tailwind + HTMX)
+│   │   │   ├── pdf_forms/     # Templates formulaires PDF
+│   │   │   ├── admin/core/    # Templates dashboards admin
+│   │   │   └── credit_forms/  # Template assistant credit
+│   │   └── migrations/        # 17 migrations
 │   ├── gestion_locative/
 │   │   ├── settings.py        # Configuration Django
 │   │   └── urls.py            # Routes principales
@@ -76,15 +96,15 @@ Le système repose sur **3 principes fondamentaux** :
 
 ### 1.4 Choix d'Architecture
 
-**Architecture Monolithique Django**
+**Architecture Monolithique Django + Interface Custom**
 
-Le projet utilise une architecture monolithique basée sur Django pour les raisons suivantes :
+Le projet utilise une architecture monolithique Django avec une interface custom (v3.0) :
 
-1. **Time-to-Market** : Django fournit immédiatement une interface admin complète, évitant le développement d'un frontend séparé.
+1. **Interface Custom (v3.0)** : Templates Django + HTMX + Tailwind CSS via CDN. Pas de build JS, zero config. Navigation centree sur les biens immobiliers. Accessible sur `/app/`.
 
-2. **Robustesse** : Batterie complète de fonctionnalités (ORM, migrations, auth, admin) testées et éprouvées.
+2. **Admin Legacy** : Django Admin + Jazzmin reste accessible sur `/admin/` pendant la transition. Sera supprime une fois l'interface custom complete.
 
-3. **Simplicité de Déploiement** : Un seul processus Python à déployer, pas d'orchestration complexe.
+3. **Simplicité de Déploiement** : Un seul processus Python, pas d'orchestration complexe. Tailwind et HTMX via CDN.
 
 4. **Maintenance Réduite** : Moins de dépendances et de composants à maintenir.
 
@@ -123,19 +143,21 @@ def generer_quittance_pdf(request, pk):
     return response
 ```
 
-#### Interface Admin : Django Jazzmin
+#### Interface Utilisateur : Django Templates + HTMX + Tailwind CSS (v3.0)
 
-**Choix** : Django Admin + thème Jazzmin
+**Choix** : Interface custom remplacant progressivement Django Admin
 
 **Avantages** :
-- ✅ UI/UX professionnelle moderne sans développement frontend
-- ✅ Responsive (fonctionne sur mobile/tablette)
-- ✅ Personnalisation via `admin.py` uniquement
-- ✅ Actions personnalisées (génération PDF depuis listes)
-- ✅ Inlines pour édition parent-enfant (Occupants dans Bail)
+- Interface centree sur les biens (navigation intuitive vs liste de modeles admin)
+- Mobile-first (formulaire depense rapide depuis telephone)
+- HTMX pour l'interactivite (onglets, modals) sans ecrire de JavaScript
+- Tailwind CSS via CDN (zero build, zero config)
+- Pas de dependance NPM/Node.js
 
-**Alternative évitée** :
-- Développer un frontend React/Vue : Temps de développement x10, complexité accrue
+**Admin Django legacy** (accessible sur `/admin/`) :
+- Reste disponible pendant la transition
+- Utile pour operations avancees et debug
+- Sera supprime une fois l'interface custom complete (Phase 7)
 
 ---
 
@@ -1439,9 +1461,391 @@ RÉSULTAT FONCIER                     = X €
 
 ---
 
-## 11. Évolutions Futures
+## 11. Interface Custom (v3.0 - Complete)
 
-### 10.1 Améliorations Techniques
+### 11.1 Architecture et Stack
+
+**Objectif** : Remplacer l'interface Django Admin par une interface sur mesure, centree sur les biens immobiliers, optimisee mobile.
+
+**Stack Frontend** :
+- **Tailwind CSS** via CDN (`@tailwindcss/browser@4`) - Styling utilitaire, zero build
+- **HTMX** via CDN (`htmx.org@2.0.4`) - Interactivite (onglets, modals, formulaires) sans JavaScript custom
+- **Chart.js** via CDN - Graphiques patrimoine (camembert repartition, courbes projection)
+
+**Principe de coexistence** :
+- Interface custom : `/app/` (point d'entree principal, `@login_required`)
+- Admin Django legacy : `/admin/` (accessible pour operations avancees)
+- Racine `/` redirige vers `/app/`
+- `LOGIN_URL = '/app/login/'` et `LOGIN_REDIRECT_URL = '/app/'`
+
+**Aucune nouvelle dependance Python requise**. Tout le frontend est charge via CDN.
+
+### 11.2 Structure des Fichiers
+
+```
+core/
+├── views_app.py           # ~50 vues (dashboard, detail, CRUD, patrimoine)
+├── urls_app.py            # 88 routes /app/...
+├── forms.py               # 14 ModelForms
+├── context_processors.py  # Injection navigation (liste immeubles)
+├── templatetags/
+│   ├── __init__.py
+│   └── app_filters.py    # Filtres |euro et |pct
+└── templates/app/
+    ├── base.html                  # Layout : sidebar, CDN, modal container
+    ├── _modal_form.html           # Template modal generique pour CRUD
+    ├── _modal_confirm_delete.html # Confirmation suppression
+    ├── auth/
+    │   └── login.html             # Page de connexion
+    ├── dashboard/
+    │   └── index.html             # Dashboard portfolio (KPIs + cartes)
+    ├── depenses/
+    │   └── quick_add.html         # Formulaire rapide (mobile-first)
+    ├── immeubles/
+    │   ├── detail.html            # Vue detaillee (5 onglets HTMX)
+    │   ├── _tab_general.html      # Infos, acquisition, regime fiscal
+    │   ├── _tab_locaux.html       # Locaux avec CRUD
+    │   ├── _tab_finances.html     # Credits, depenses, cles repartition avec CRUD
+    │   ├── _tab_consommations.html # Releves compteurs avec CRUD
+    │   └── _tab_estimations.html  # Historique valorisations avec CRUD
+    ├── baux/
+    │   ├── detail.html            # Vue detaillee bail (4 onglets HTMX)
+    │   ├── _tab_info.html         # Informations + tarifications avec CRUD
+    │   ├── _tab_occupants.html    # Locataires et garants avec CRUD
+    │   ├── _tab_regularisations.html # Regularisations + ajustements avec CRUD
+    │   └── _tab_documents.html    # Generation PDF
+    ├── patrimoine/
+    │   ├── dashboard.html         # Dashboard patrimoine (graphiques Chart.js)
+    │   └── bilan_fiscal.html      # Bilan fiscal annuel par immeuble
+    └── charges/
+        └── cle_detail.html        # Detail cle repartition + quotes-parts
+```
+
+### 11.3 Routes et Vues
+
+**Fichier** : `core/urls_app.py` (88 routes)
+
+**Auth et navigation** :
+
+| URL | Vue | Description |
+|-----|-----|-------------|
+| `/app/login/` | `login_view` | Page de connexion custom |
+| `/app/logout/` | `logout_view` | Deconnexion |
+| `/app/` | `dashboard_view` | Dashboard portfolio (KPIs + immeubles) |
+| `/app/depenses/ajouter/` | `depense_quick_add_view` | Formulaire rapide depense (mobile-first) |
+
+**Immeubles** :
+
+| URL | Vue | Description |
+|-----|-----|-------------|
+| `/app/immeubles/<pk>/` | `immeuble_detail_view` | Vue detaillee immeuble |
+| `/app/immeubles/<pk>/tab/<tab>/` | `immeuble_tab_view` | Partial HTMX (general, locaux, finances, consommations, estimations) |
+| `/app/immeubles/creer/` | `immeuble_create_view` | Creation immeuble (modal) |
+| `/app/immeubles/<pk>/modifier/` | `immeuble_edit_view` | Modification immeuble (modal) |
+| `/app/immeubles/<pk>/supprimer/` | `immeuble_delete_view` | Suppression immeuble (modal) |
+
+**Locaux** :
+
+| URL | Vue | Description |
+|-----|-----|-------------|
+| `/app/immeubles/<pk>/locaux/creer/` | `local_create_view` | Creation local (modal) |
+| `/app/locaux/<pk>/modifier/` | `local_edit_view` | Modification local (modal) |
+| `/app/locaux/<pk>/supprimer/` | `local_delete_view` | Suppression local (modal) |
+
+**Baux** :
+
+| URL | Vue | Description |
+|-----|-----|-------------|
+| `/app/baux/<pk>/` | `bail_detail_view` | Vue detaillee bail |
+| `/app/baux/<pk>/tab/<tab>/` | `bail_tab_view` | Partial HTMX (info, occupants, regularisations, documents) |
+| `/app/locaux/<pk>/baux/creer/` | `bail_create_view` | Creation bail (modal) |
+| `/app/baux/<pk>/modifier/` | `bail_edit_view` | Modification bail (modal) |
+
+**Tarifications, Occupants** :
+
+| URL | Vue | Description |
+|-----|-----|-------------|
+| `/app/baux/<pk>/tarifications/creer/` | `tarification_create_view` | Nouvelle tarification (modal) |
+| `/app/baux/<pk>/occupants/creer/` | `occupant_create_view` | Ajouter occupant (modal) |
+| `/app/occupants/<pk>/modifier/` | `occupant_edit_view` | Modifier occupant (modal) |
+| `/app/occupants/<pk>/supprimer/` | `occupant_delete_view` | Supprimer occupant (modal) |
+
+**Estimations, Credits** :
+
+| URL | Vue | Description |
+|-----|-----|-------------|
+| `/app/immeubles/<pk>/estimations/creer/` | `estimation_create_view` | Nouvelle estimation (modal) |
+| `/app/estimations/<pk>/supprimer/` | `estimation_delete_view` | Supprimer estimation (modal) |
+| `/app/immeubles/<pk>/credits/creer/` | `credit_create_view` | Nouveau credit (modal) |
+| `/app/credits/<pk>/modifier/` | `credit_edit_view` | Modifier credit (modal) |
+| `/app/credits/<pk>/supprimer/` | `credit_delete_view` | Supprimer credit (modal) |
+
+**Depenses, Cles de repartition** :
+
+| URL | Vue | Description |
+|-----|-----|-------------|
+| `/app/immeubles/<pk>/depenses/creer/` | `depense_create_view` | Nouvelle depense (modal) |
+| `/app/depenses/<pk>/modifier/` | `depense_edit_view` | Modifier depense (modal) |
+| `/app/depenses/<pk>/supprimer/` | `depense_delete_view` | Supprimer depense (modal) |
+| `/app/immeubles/<pk>/cles/creer/` | `cle_create_view` | Nouvelle cle repartition (modal) |
+| `/app/cles/<pk>/` | `cle_detail_view` | Detail cle + quotes-parts |
+| `/app/cles/<pk>/modifier/` | `cle_edit_view` | Modifier cle (modal) |
+| `/app/cles/<pk>/supprimer/` | `cle_delete_view` | Supprimer cle (modal) |
+
+**Quotes-parts, Consommations** :
+
+| URL | Vue | Description |
+|-----|-----|-------------|
+| `/app/cles/<pk>/quotesparts/creer/` | `quotepart_create_view` | Nouvelle quote-part (modal) |
+| `/app/quotesparts/<pk>/modifier/` | `quotepart_edit_view` | Modifier quote-part (modal) |
+| `/app/quotesparts/<pk>/supprimer/` | `quotepart_delete_view` | Supprimer quote-part (modal) |
+| `/app/immeubles/<pk>/consommations/creer/` | `consommation_create_view` | Nouveau releve (modal) |
+| `/app/consommations/<pk>/modifier/` | `consommation_edit_view` | Modifier releve (modal) |
+| `/app/consommations/<pk>/supprimer/` | `consommation_delete_view` | Supprimer releve (modal) |
+
+**Regularisations, Ajustements** :
+
+| URL | Vue | Description |
+|-----|-----|-------------|
+| `/app/baux/<pk>/regularisations/creer/` | `regularisation_create_view` | Nouvelle regularisation (modal) |
+| `/app/regularisations/<pk>/modifier/` | `regularisation_edit_view` | Modifier regularisation (modal) |
+| `/app/regularisations/<pk>/supprimer/` | `regularisation_delete_view` | Supprimer regularisation (modal) |
+| `/app/baux/<pk>/ajustements/creer/` | `ajustement_create_view` | Nouvel ajustement (modal) |
+| `/app/ajustements/<pk>/modifier/` | `ajustement_edit_view` | Modifier ajustement (modal) |
+| `/app/ajustements/<pk>/supprimer/` | `ajustement_delete_view` | Supprimer ajustement (modal) |
+
+**Patrimoine** :
+
+| URL | Vue | Description |
+|-----|-----|-------------|
+| `/app/patrimoine/` | `patrimoine_dashboard_view` | Dashboard patrimoine (graphiques) |
+| `/app/immeubles/<pk>/fiscal/` | `bilan_fiscal_view` | Bilan fiscal annuel |
+
+**Calculateurs reutilises dans les vues** :
+- `PatrimoineCalculator` : `get_valeur_actuelle()`, `get_capital_restant_du()`, `get_valeur_nette()`, `get_plus_value_latente()`
+- `RentabiliteCalculator` : `get_rendement_brut()`, `get_rendement_net()`, `get_cashflow_mensuel()`, `get_charges_annuelles()`, `get_interets_annuels()`
+- `RatiosCalculator` : `get_taux_occupation()`
+- `FiscaliteCalculator` : `generer_bilan_fiscal()` (revenus, charges deductibles, resultat foncier)
+
+### 11.4 Templates et Composants
+
+**`base.html`** - Layout principal :
+- Sidebar fixe (desktop) / hamburger menu (mobile)
+- Liste des immeubles dans la sidebar (via context processor `navigation_context`)
+- Lien patrimoine dans la sidebar
+- Barre superieure avec titre de page
+- Zone de messages Django (success, error, warning)
+- Modal container (`<dialog>`) avec gestion auto ouverture/fermeture
+- CSRF token injecte dans les headers HTMX
+
+**`_modal_form.html`** - Template modal generique :
+- Titre dynamique
+- Rendu formulaire avec classes Tailwind
+- Boutons Annuler / Sauvegarder
+- Utilise `hx-post` pour soumission AJAX
+
+**`_modal_confirm_delete.html`** - Confirmation suppression :
+- Message d'alerte
+- Boutons Annuler / Confirmer (rouge)
+
+**`dashboard/index.html`** - Dashboard portfolio :
+- 4 cartes KPI : valeur patrimoine, CRD, valeur nette, cashflow
+- Bouton "Ajouter une depense" (acces rapide)
+- Grille de cartes immeubles cliquables (rendement, cashflow, taux occupation)
+- Badge couleur pour taux d'occupation (vert >= 80%, jaune >= 50%, rouge < 50%)
+
+**`immeubles/detail.html`** - Vue detaillee immeuble :
+- KPIs immeuble en haut (valeur, valeur nette, rendement, cashflow)
+- Barre d'onglets HTMX (5 onglets, chargement partiel sans rechargement)
+- Boutons modifier/supprimer immeuble
+
+**`baux/detail.html`** - Vue detaillee bail :
+- Informations bail et locataire principal
+- Barre d'onglets HTMX (4 onglets)
+- Lien retour vers l'immeuble
+
+**`patrimoine/dashboard.html`** - Dashboard patrimoine :
+- KPIs (valeur totale, CRD, valeur nette, cashflow)
+- Graphique camembert repartition valeur (Chart.js)
+- Graphique courbes projection 10 ans (Chart.js)
+- Tableau detail par immeuble avec lien bilan fiscal
+
+**`patrimoine/bilan_fiscal.html`** - Bilan fiscal :
+- Selecteur d'annee fiscale
+- KPIs (revenus bruts, charges deductibles, resultat foncier, deficit)
+- Detail credits et interets
+- Detail charges par type
+- Recap declaration 2044
+
+**`charges/cle_detail.html`** - Detail cle repartition :
+- Infos cle (mode, prix unitaire, total tantiemes)
+- Tableau quotes-parts par local avec pourcentages
+- CRUD quotes-parts
+
+**Design responsive** :
+- Toutes les listes ont une vue mobile (cartes `lg:hidden`) et une vue desktop (tableau `hidden lg:block`)
+
+### 11.5 Patterns HTMX
+
+**Onglets dynamiques** :
+```html
+<button hx-get="/app/immeubles/1/tab/locaux/"
+        hx-target="#tab-content"
+        hx-swap="innerHTML">
+    Locaux
+</button>
+<div id="tab-content"><!-- Contenu charge dynamiquement --></div>
+```
+
+**Modal CRUD** :
+```html
+<!-- Bouton ouvre la modal -->
+<button hx-get="/app/immeubles/1/locaux/creer/"
+        hx-target="#modal-content"
+        hx-swap="innerHTML">
+    Ajouter un local
+</button>
+
+<!-- Container modal dans base.html -->
+<dialog id="modal">
+    <div id="modal-content"></div>
+</dialog>
+```
+
+La vue retourne `_modal_form.html` (GET) ou HTTP 204 avec headers (POST) :
+```python
+def _modal_success():
+    response = HttpResponse(status=204)
+    response['HX-Trigger'] = 'closeModal'
+    response['HX-Refresh'] = 'true'
+    return response
+```
+
+**Filtres templates** (`app_filters.py`) :
+- `{{ valeur|euro }}` → `1 234,56 EUR`
+- `{{ taux|pct }}` → `5,25 %`
+
+### 11.6 Formulaires (ModelForms)
+
+**Fichier** : `core/forms.py` (14 formulaires)
+
+**Decorateur `_apply_css`** : Applique automatiquement les classes Tailwind a tous les widgets d'un formulaire.
+
+```python
+def _apply_css(form_class):
+    """Applique les classes CSS Tailwind a tous les widgets."""
+    # Ajoute INPUT_CLASS a chaque champ sans classe existante
+```
+
+**Liste des formulaires** :
+
+| Formulaire | Modele | Particularites |
+|-----------|--------|----------------|
+| `DepenseQuickForm` | Depense | Classes mobile-first, champs optionnels |
+| `ImmeubleForm` | Immeuble | 10 champs, dates avec `type=date` |
+| `LocalForm` | Local | 5 champs |
+| `BailForm` | Bail | 9 champs, date_fin optionnelle |
+| `BailTarificationForm` | BailTarification | 10 champs, notes en textarea |
+| `OccupantForm` | Occupant | 6 champs, email/tel optionnels |
+| `EstimationValeurForm` | EstimationValeur | 5 champs |
+| `CreditImmobilierForm` | CreditImmobilier | 9 champs, step precis pour taux |
+| `DepenseForm` | Depense | Kwarg `immeuble` filtre les cles |
+| `CleRepartitionForm` | CleRepartition | 4 champs, prix_unitaire optionnel |
+| `QuotePartForm` | QuotePart | Kwarg `cle` filtre les locaux |
+| `ConsommationForm` | Consommation | Kwarg `immeuble` filtre locaux et cles |
+| `RegularisationForm` | Regularisation | 9 champs, date_paiement optionnelle |
+| `AjustementForm` | Ajustement | 4 champs |
+
+**Pattern kwarg pour filtrage queryset** :
+```python
+@_apply_css
+class DepenseForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        immeuble = kwargs.pop('immeuble', None)
+        super().__init__(*args, **kwargs)
+        if immeuble:
+            self.fields['cle_repartition'].queryset = CleRepartition.objects.filter(immeuble=immeuble)
+```
+
+### 11.7 CRUD Modal Pattern
+
+**Pattern complet pour une entite** (exemple : Depense) :
+
+**1. URL** (`urls_app.py`) :
+```python
+path('immeubles/<int:immeuble_pk>/depenses/creer/', views_app.depense_create_view, name='app_depense_create'),
+path('depenses/<int:pk>/modifier/', views_app.depense_edit_view, name='app_depense_edit'),
+path('depenses/<int:pk>/supprimer/', views_app.depense_delete_view, name='app_depense_delete'),
+```
+
+**2. Vue** (`views_app.py`) :
+```python
+@login_required
+def depense_create_view(request, immeuble_pk):
+    immeuble = get_object_or_404(Immeuble, pk=immeuble_pk)
+    action_url = f'/app/immeubles/{immeuble_pk}/depenses/creer/'
+    if request.method == 'POST':
+        form = DepenseForm(request.POST, immeuble=immeuble)
+        if form.is_valid():
+            form.save()
+            return _modal_success()  # HTTP 204 + HX-Trigger: closeModal
+    else:
+        form = DepenseForm(initial={'immeuble': immeuble, 'date': date.today()}, immeuble=immeuble)
+    form.fields['immeuble'].widget = django_forms.HiddenInput()  # Masquer FK parent
+    return _modal_form_response(request, form, 'Nouvelle depense', action_url)
+```
+
+**3. Template** (`_modal_form.html`) : Template generique reutilise par toutes les vues create/edit.
+
+**4. Bouton dans le template onglet** :
+```html
+<button hx-get="{% url 'app_depense_create' immeuble_pk=immeuble.pk %}"
+        hx-target="#modal-content" hx-swap="innerHTML"
+        class="...">
+    Nouvelle depense
+</button>
+```
+
+**Helpers internes** :
+- `_modal_form_response(request, form, title, action_url)` : Rend le template modal avec le formulaire
+- `_modal_success()` : Retourne HTTP 204 avec `HX-Trigger: closeModal` et `HX-Refresh: true`
+- `_modal_delete_response(request, obj, title, action_url)` : Rend le template de confirmation de suppression
+
+### 11.8 Pages Patrimoine
+
+**Dashboard Patrimoine** (`/app/patrimoine/`) :
+- Reutilise `PatrimoineCalculator` et `RentabiliteCalculator`
+- KPIs : valeur totale, CRD, valeur nette, cashflow mensuel
+- Graphique camembert : repartition valeur par immeuble (Chart.js)
+- Graphique courbes : projection 10 ans valeur / CRD / valeur nette (Chart.js)
+- Tableau par immeuble : rendement, cashflow, taux occupation, lien bilan fiscal
+
+**Bilan Fiscal** (`/app/immeubles/<pk>/fiscal/`) :
+- Reutilise `FiscaliteCalculator.generer_bilan_fiscal()`
+- Selecteur annee fiscale (dernier/precedent/etc.)
+- KPIs : revenus bruts, charges deductibles, resultat foncier, deficit reportable
+- Detail par credit : interets, assurance
+- Detail charges par type (travaux, assurance PNO, taxe fonciere, etc.)
+- Recap declaration 2044
+
+### 11.9 Phases d'implementation (toutes terminees)
+
+| Phase | Description | Statut |
+|-------|-------------|--------|
+| Phase 0 | Fondation (branche, squelette, login, layout) | Termine |
+| Phase 1 | Dashboard avec vraies donnees + depense rapide | Termine |
+| Phase 2 | Vue detaillee immeuble (onglets HTMX) | Termine |
+| Phase 3 | Vue detaillee bail + generation PDF | Termine |
+| Phase 4 | CRUD via modals HTMX (tous les modeles principaux) | Termine |
+| Phase 5 | Migration vues patrimoine (dashboard, bilan fiscal) | Termine |
+| Phase 6 | Gestion charges + CRUD avance (7 modeles supplementaires) | Termine |
+| Phase 7 | Polish (onglet consommations, cleanup) | Termine |
+
+---
+
+## 12. Évolutions Futures
+
+### 12.1 Améliorations Techniques
 
 #### Stockage de Fichiers
 
@@ -1530,7 +1934,7 @@ python manage.py migrate
 python manage.py loaddata data.json
 ```
 
-### 10.2 Nouvelles Fonctionnalités
+### 12.2 Nouvelles Fonctionnalités
 
 #### Envoi Automatique par Email
 
@@ -1654,7 +2058,7 @@ POST /api/locataires/me/incidents/
 
 **Note** : Nécessiterait le développement d'une API REST dédiée avec authentification locataire.
 
-### 10.3 Optimisations
+### 12.3 Optimisations
 
 #### Cache des Calculs de Régularisation
 
@@ -1687,7 +2091,7 @@ class BailTarification(models.Model):
         ]
 ```
 
-### 10.4 Sécurité
+### 12.4 Sécurité
 
 #### Authentification à Deux Facteurs (2FA)
 
@@ -1758,4 +2162,4 @@ python manage.py shell              # Console interactive
 ---
 
 **Document maintenu par** : Équipe de développement
-**Dernière révision** : Février 2026 (v2.1 - Gestion Patrimoniale)
+**Dernière révision** : Février 2026 (v3.0 - Interface Custom)

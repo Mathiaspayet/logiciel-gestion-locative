@@ -1,0 +1,81 @@
+{% load app_filters %}
+
+<div class="p-5 space-y-6">
+    <!-- Actions rapides -->
+    <div>
+        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Generer un document</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- Quittance -->
+            <a href="/api/quittance/{{ bail.pk }}/"
+               class="flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors group">
+                <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-200">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-900">Quittance de loyer</p>
+                    <p class="text-xs text-gray-500">Generer une quittance pour une ou plusieurs periodes</p>
+                </div>
+            </a>
+
+            <!-- Avis d'echeance -->
+            <a href="/api/avis_echeance/{{ bail.pk }}/"
+               class="flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors group">
+                <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-green-100 text-green-600 flex items-center justify-center group-hover:bg-green-200">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-900">Avis d'echeance</p>
+                    <p class="text-xs text-gray-500">Appel de loyer avec date limite de paiement</p>
+                </div>
+            </a>
+
+            <!-- Regularisation -->
+            <a href="/api/regularisation/{{ bail.pk }}/"
+               class="flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-colors group">
+                <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center group-hover:bg-orange-200">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-900">Regularisation de charges</p>
+                    <p class="text-xs text-gray-500">Decompte annuel des charges reelles vs provisions</p>
+                </div>
+            </a>
+
+            <!-- Solde de tout compte -->
+            <a href="/api/solde_tout_compte/{{ bail.pk }}/"
+               class="flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 transition-colors group">
+                <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-red-100 text-red-600 flex items-center justify-center group-hover:bg-red-200">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-900">Solde de tout compte</p>
+                    <p class="text-xs text-gray-500">Arrete de compte en fin de bail</p>
+                </div>
+            </a>
+
+            <!-- Revision loyer -->
+            <a href="/api/revision_loyer/{{ bail.pk }}/"
+               class="flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition-colors group">
+                <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center group-hover:bg-purple-200">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-900">Revision de loyer (IRL/ILC)</p>
+                    <p class="text-xs text-gray-500">Calcul et courrier de revision annuelle</p>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- Periodes disponibles (info) -->
+    {% if periodes_disponibles %}
+    <div>
+        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Periodes couvertes</h3>
+        <p class="text-sm text-gray-600">
+            Ce bail couvre <strong>{{ periodes_disponibles|length }}</strong> periodes,
+            de <strong>{{ periodes_disponibles|last|dictsort:"value"|first }}</strong>
+            a <strong>{{ periodes_disponibles|first|dictsort:"value"|first }}</strong>.
+        </p>
+    </div>
+    {% endif %}
+</div>

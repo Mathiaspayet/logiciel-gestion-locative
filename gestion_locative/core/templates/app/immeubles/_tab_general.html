@@ -1,0 +1,94 @@
+{% load app_filters %}
+
+<div class="p-5 space-y-6">
+    <!-- Informations generales -->
+    <div>
+        <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Informations</h3>
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+            <div>
+                <dt class="text-sm text-gray-500">Adresse</dt>
+                <dd class="text-sm font-medium text-gray-900">{{ immeuble.adresse }}, {{ immeuble.code_postal }} {{ immeuble.ville }}</dd>
+            </div>
+            {% if immeuble.proprietaire %}
+            <div>
+                <dt class="text-sm text-gray-500">Proprietaire</dt>
+                <dd class="text-sm font-medium text-gray-900">{{ immeuble.proprietaire.nom }}</dd>
+            </div>
+            {% endif %}
+            <div>
+                <dt class="text-sm text-gray-500">Regime fiscal</dt>
+                <dd class="text-sm font-medium text-gray-900">{{ immeuble.get_regime_fiscal_display }}</dd>
+            </div>
+            <div>
+                <dt class="text-sm text-gray-500">Taux d'occupation</dt>
+                <dd class="text-sm font-medium text-gray-900">{{ taux_occupation|pct }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <!-- Acquisition -->
+    {% if immeuble.prix_achat %}
+    <div>
+        <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Acquisition</h3>
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+            <div>
+                <dt class="text-sm text-gray-500">Prix d'achat (frais inclus)</dt>
+                <dd class="text-sm font-medium text-gray-900">{{ immeuble.prix_achat|euro }}</dd>
+            </div>
+            {% if immeuble.date_achat %}
+            <div>
+                <dt class="text-sm text-gray-500">Date d'achat</dt>
+                <dd class="text-sm font-medium text-gray-900">{{ immeuble.date_achat|date:"d/m/Y" }}</dd>
+            </div>
+            {% endif %}
+            {% if immeuble.frais_notaire %}
+            <div>
+                <dt class="text-sm text-gray-500">Frais de notaire</dt>
+                <dd class="text-sm font-medium text-gray-900">{{ immeuble.frais_notaire|euro }}</dd>
+            </div>
+            {% endif %}
+            {% if immeuble.frais_agence %}
+            <div>
+                <dt class="text-sm text-gray-500">Frais d'agence</dt>
+                <dd class="text-sm font-medium text-gray-900">{{ immeuble.frais_agence|euro }}</dd>
+            </div>
+            {% endif %}
+            {% if immeuble.cout_total_acquisition %}
+            <div>
+                <dt class="text-sm text-gray-500">Cout total acquisition</dt>
+                <dd class="text-sm font-medium text-gray-900">{{ immeuble.cout_total_acquisition|euro }}</dd>
+            </div>
+            {% endif %}
+            {% if plus_value is not None %}
+            <div>
+                <dt class="text-sm text-gray-500">Plus-value latente</dt>
+                <dd class="text-sm font-medium {% if plus_value >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ plus_value|euro }}</dd>
+            </div>
+            {% endif %}
+        </dl>
+    </div>
+    {% endif %}
+
+    <!-- Indicateurs financiers -->
+    <div>
+        <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">Indicateurs financiers</h3>
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+            <div>
+                <dt class="text-sm text-gray-500">Rendement brut</dt>
+                <dd class="text-sm font-medium text-gray-900">{% if rendement_brut is not None %}{{ rendement_brut|pct }}{% else %}-{% endif %}</dd>
+            </div>
+            <div>
+                <dt class="text-sm text-gray-500">Rendement net</dt>
+                <dd class="text-sm font-medium text-gray-900">{% if rendement_net is not None %}{{ rendement_net|pct }}{% else %}-{% endif %}</dd>
+            </div>
+            <div>
+                <dt class="text-sm text-gray-500">Cashflow mensuel</dt>
+                <dd class="text-sm font-medium {% if cashflow >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ cashflow|euro }}</dd>
+            </div>
+            <div>
+                <dt class="text-sm text-gray-500">Capital restant du</dt>
+                <dd class="text-sm font-medium text-gray-900">{{ crd|euro }}</dd>
+            </div>
+        </dl>
+    </div>
+</div>
