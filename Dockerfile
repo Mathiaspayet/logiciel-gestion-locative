@@ -28,18 +28,24 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Code source
 COPY gestion_locative/ /app/
 
-# Créer les dossiers nécessaires
-RUN mkdir -p /app/logs /app/staticfiles /app/data
+# Créer les dossiers nécessaires (data/media est monté sur le volume persistant)
+RUN mkdir -p /app/logs /app/staticfiles /app/data /app/data/media /app/data/cache
 
 # Collecter les fichiers statiques au build
 RUN DJANGO_SECRET_KEY=build-placeholder \
     DJANGO_DEBUG=False \
     python manage.py collectstatic --noinput
 
-# Script d'entrée
+# Script d'entrée et sonde de santé
 COPY docker-entrypoint.sh /app/
+COPY healthcheck.py /app/
 RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8000
+
+# Sans healthcheck, un conteneur qui demarre mais ne repond plus reste "up" :
+# Watchtower deploierait une image cassee sans que rien ne le signale.
+HEALTHCHECK --interval=60s --timeout=10s --start-period=40s --retries=3 \
+    CMD ["python", "/app/healthcheck.py"]
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

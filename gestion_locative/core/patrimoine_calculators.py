@@ -9,6 +9,7 @@ Ce module contient les classes de calcul pour:
 - CreditGenerator: Génération d'échéanciers de crédit
 """
 
+import calendar
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import date
 from dateutil.relativedelta import relativedelta
@@ -127,8 +128,8 @@ class PatrimoineCalculator:
         """
         derniere_estimation = immeuble.estimations.order_by('-date_estimation').first()
         if derniere_estimation:
-            return float(derniere_estimation.valeur_estimee)
-        return float(immeuble.prix_achat) if immeuble.prix_achat else 0
+            return derniere_estimation.valeur_estimee
+        return immeuble.prix_achat or Decimal('0')
 
     @staticmethod
     def get_capital_restant_du(immeuble, target_date=None):
@@ -138,7 +139,7 @@ class PatrimoineCalculator:
         if target_date is None:
             target_date = timezone.now().date()
 
-        total_crd = 0
+        total_crd = Decimal('0')
         for credit in immeuble.credits.all():
             total_crd += credit.get_capital_restant_du_at(target_date)
         return total_crd
@@ -158,7 +159,7 @@ class PatrimoineCalculator:
         Calcule la plus-value latente (valeur actuelle - coût d'acquisition).
         """
         valeur = PatrimoineCalculator.get_valeur_actuelle(immeuble)
-        cout = float(immeuble.cout_total_acquisition) if immeuble.prix_achat else 0
+        cout = immeuble.cout_total_acquisition if immeuble.prix_achat else Decimal('0')
         return valeur - cout
 
     @staticmethod
@@ -169,15 +170,15 @@ class PatrimoineCalculator:
         from .models import Immeuble
 
         immeubles = Immeuble.objects.filter(proprietaire=proprietaire)
-        total_valeur = 0
-        total_crd = 0
-        total_acquisition = 0
+        total_valeur = Decimal('0')
+        total_crd = Decimal('0')
+        total_acquisition = Decimal('0')
 
         details = []
         for immeuble in immeubles:
             valeur = PatrimoineCalculator.get_valeur_actuelle(immeuble)
             crd = PatrimoineCalculator.get_capital_restant_du(immeuble)
-            acquisition = float(immeuble.cout_total_acquisition) if immeuble.prix_achat else 0
+            acquisition = immeuble.cout_total_acquisition if immeuble.prix_achat else Decimal('0')
 
             total_valeur += valeur
             total_crd += crd
@@ -206,62 +207,74 @@ class RentabiliteCalculator:
     """Calculs de rentabilité immobilière."""
 
     @staticmethod
+    def _loyer_mensuel_equivalent(bail, tarif):
+        """Loyer ramené au mois, quelle que soit la fréquence de paiement."""
+        if bail.frequence_paiement == 'TRIMESTRIEL':
+            return tarif.loyer_hc / 3
+        return tarif.loyer_hc
+
+    @staticmethod
     def get_loyers_annuels(immeuble, annee):
         """
-        Calcule les loyers bruts perçus sur une année.
-        Basé sur les baux actifs de l'immeuble.
-        Prend en compte la fréquence de paiement (mensuel vs trimestriel).
-        """
-        from .models import Bail
+        Calcule les loyers théoriques sur une année, au prorata des jours occupés.
 
-        total_loyers = 0
+        ATTENTION : il s'agit des loyers dus d'après les tarifications, pas des
+        loyers encaissés. Les impayés ne sont pas déduits (l'application ne suit
+        pas les encaissements).
+        """
+        import calendar
+
+        total_loyers = Decimal('0')
         date_debut_annee = date(annee, 1, 1)
         date_fin_annee = date(annee, 12, 31)
 
-        # Récupérer tous les baux actifs pendant l'année
         for local in immeuble.locaux.all():
-            for bail in local.baux.filter(
-                Q(date_debut__lte=date_fin_annee) &
-                (Q(date_fin__isnull=True) | Q(date_fin__gte=date_debut_annee))
-            ):
-                # Calculer le nombre de mois actifs
+            # Filtrage en Python : un .filter() ici annulerait le prefetch_related
+            # des vues et relancerait une requete par local.
+            baux_de_lannee = [
+                bail for bail in local.baux.all()
+                if bail.date_debut <= date_fin_annee
+                and (bail.date_fin is None or bail.date_fin >= date_debut_annee)
+            ]
+            for bail in baux_de_lannee:
                 debut_effectif = max(bail.date_debut, date_debut_annee)
-                fin_effective = bail.date_fin if bail.date_fin and bail.date_fin <= date_fin_annee else date_fin_annee
+                fin_effective = min(bail.date_fin, date_fin_annee) if bail.date_fin else date_fin_annee
 
-                # Nombre de mois actifs dans l'année
-                mois_actifs = (fin_effective.year - debut_effectif.year) * 12 + (fin_effective.month - debut_effectif.month) + 1
-                mois_actifs = max(0, min(mois_actifs, 12))  # Borner entre 0 et 12 (une année max)
+                if debut_effectif > fin_effective:
+                    continue
 
-                if bail.frequence_paiement == 'TRIMESTRIEL':
-                    # Pour un bail trimestriel : 4 loyers par an (ou prorata)
-                    # Calculer le nombre de trimestres complets
-                    nombre_trimestres = mois_actifs / 3
+                for mois in range(1, 13):
+                    nb_jours_mois = calendar.monthrange(annee, mois)[1]
+                    debut_mois = date(annee, mois, 1)
+                    fin_mois = date(annee, mois, nb_jours_mois)
 
-                    # Récupérer le tarif actuel
-                    tarif = bail.get_tarification_at(date(annee, 6, 15))  # Milieu de l'année
-                    if tarif:
-                        total_loyers += float(tarif.loyer_hc) * nombre_trimestres
-                else:
-                    # Pour un bail mensuel : récupérer les tarifications pour chaque mois
-                    for mois_offset in range(mois_actifs):
-                        m = debut_effectif.month + mois_offset
-                        y = annee
-                        if m > 12:
-                            m -= 12
-                            y += 1
-                        if y != annee:
-                            break  # Ne pas dépasser l'année en cours
-                        date_mois = date(y, m, 1)
-                        tarif = bail.get_tarification_at(date_mois)
-                        if tarif:
-                            total_loyers += float(tarif.loyer_hc)
+                    p_start = max(debut_mois, debut_effectif)
+                    p_end = min(fin_mois, fin_effective)
+                    if p_start > p_end:
+                        continue
 
-        return total_loyers
+                    for tarif in bail.get_tarifications_for_period(p_start, p_end):
+                        seg_start = max(p_start, tarif.date_debut)
+                        seg_end = min(p_end, tarif.date_fin) if tarif.date_fin else p_end
+                        if seg_start > seg_end:
+                            continue
+
+                        nb_jours = (seg_end - seg_start).days + 1
+                        loyer_mensuel = RentabiliteCalculator._loyer_mensuel_equivalent(bail, tarif)
+
+                        if nb_jours == nb_jours_mois:
+                            total_loyers += loyer_mensuel
+                        else:
+                            total_loyers += (
+                                loyer_mensuel * Decimal(nb_jours) / Decimal(nb_jours_mois)
+                            )
+
+        return total_loyers.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     @staticmethod
     def get_rendement_brut(immeuble, annee=None):
         """
-        Calcule le rendement brut : Loyers annuels / Prix d'achat × 100
+        Calcule le rendement brut : Loyers annuels / Coût d'acquisition × 100
         """
         if not immeuble.prix_achat:
             return None
@@ -270,27 +283,32 @@ class RentabiliteCalculator:
             annee = timezone.now().year
 
         loyers = RentabiliteCalculator.get_loyers_annuels(immeuble, annee)
-        prix = float(immeuble.cout_total_acquisition)
+        prix = immeuble.cout_total_acquisition
 
         if prix == 0:
             return None
 
-        return (loyers / prix) * 100
+        return float(loyers / prix * 100)
 
     @staticmethod
-    def get_charges_annuelles(immeuble, annee):
+    def get_charges_annuelles(immeuble, annee, exclure_types=None):
         """
-        Total des charges fiscales pour une année.
+        Total des charges fiscales saisies pour une année.
+
+        exclure_types permet d'écarter les types déjà calculés depuis l'échéancier
+        de crédit, pour ne pas les compter deux fois.
         """
-        return float(immeuble.charges_fiscales.filter(annee=annee).aggregate(
-            total=Sum('montant'))['total'] or 0)
+        charges = immeuble.charges_fiscales.filter(annee=annee)
+        if exclure_types:
+            charges = charges.exclude(type_charge__in=exclure_types)
+        return charges.aggregate(total=Sum('montant'))['total'] or Decimal('0')
 
     @staticmethod
     def get_interets_annuels(immeuble, annee):
         """
-        Total des intérêts payés sur une année pour tous les crédits.
+        Total des intérêts payés sur une année pour tous les crédits (échéanciers).
         """
-        total_interets = 0
+        total_interets = Decimal('0')
         date_debut = date(annee, 1, 1)
         date_fin = date(annee, 12, 31)
 
@@ -298,16 +316,32 @@ class RentabiliteCalculator:
             interets = credit.echeances.filter(
                 date_echeance__gte=date_debut,
                 date_echeance__lte=date_fin
-            ).aggregate(total=Sum('interets'))['total'] or 0
-            total_interets += float(interets)
+            ).aggregate(total=Sum('interets'))['total'] or Decimal('0')
+            total_interets += interets
 
         return total_interets
+
+    @staticmethod
+    def get_assurance_emprunt_annuelle(immeuble, annee):
+        """Total des primes d'assurance emprunteur d'une année (échéanciers)."""
+        total = Decimal('0')
+        date_debut = date(annee, 1, 1)
+        date_fin = date(annee, 12, 31)
+
+        for credit in immeuble.credits.all():
+            assurance = credit.echeances.filter(
+                date_echeance__gte=date_debut,
+                date_echeance__lte=date_fin
+            ).aggregate(total=Sum('assurance'))['total'] or Decimal('0')
+            total += assurance
+
+        return total
 
     @staticmethod
     def get_rendement_net(immeuble, annee=None):
         """
         Calcule le rendement net :
-        (Loyers - Charges - Intérêts) / Prix d'achat × 100
+        (Loyers - Charges - Intérêts) / Coût d'acquisition × 100
         """
         if not immeuble.prix_achat:
             return None
@@ -315,36 +349,37 @@ class RentabiliteCalculator:
         if annee is None:
             annee = timezone.now().year
 
-        loyers = RentabiliteCalculator.get_loyers_annuels(immeuble, annee)
-        charges = RentabiliteCalculator.get_charges_annuelles(immeuble, annee)
-        interets = RentabiliteCalculator.get_interets_annuels(immeuble, annee)
-        prix = float(immeuble.cout_total_acquisition)
+        bilan = FiscaliteCalculator.generer_bilan_fiscal(immeuble, annee)
+        prix = immeuble.cout_total_acquisition
 
         if prix == 0:
             return None
 
-        return ((loyers - charges - interets) / prix) * 100
+        resultat = bilan['resultat']['resultat_foncier']
+        return float(resultat / prix * 100)
 
     @staticmethod
     def get_cashflow_mensuel(immeuble):
         """
         Calcule le cash-flow mensuel : Loyers mensuels - Mensualités crédits
         """
-        # Loyers mensuels actuels
-        total_loyers = 0
+        total_loyers = Decimal('0')
         for local in immeuble.locaux.all():
-            bail_actif = local.baux.filter(actif=True, date_fin__isnull=True).first()
+            bail_actif = next(
+                (b for b in local.baux.all() if b.actif and b.date_fin is None), None
+            )
             if bail_actif:
-                loyer = float(bail_actif.loyer_hc)
-                # Si le bail est trimestriel, diviser par 3 pour avoir l'équivalent mensuel
-                if bail_actif.frequence_paiement == 'TRIMESTRIEL':
-                    loyer = loyer / 3
-                total_loyers += loyer
+                tarif = bail_actif.tarification_actuelle
+                if tarif:
+                    total_loyers += RentabiliteCalculator._loyer_mensuel_equivalent(bail_actif, tarif)
 
-        # Mensualités des crédits
-        total_mensualites = sum(credit.mensualite for credit in immeuble.credits.all())
+        total_mensualites = sum(
+            (credit.mensualite for credit in immeuble.credits.all()), Decimal('0')
+        )
 
-        return total_loyers - total_mensualites
+        return (total_loyers - total_mensualites).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
 
     @staticmethod
     def get_synthese_rentabilite(immeuble, annee=None):
@@ -368,41 +403,47 @@ class RentabiliteCalculator:
 class FiscaliteCalculator:
     """Calculs pour la déclaration fiscale."""
 
+    # Types de charges déjà couverts par l'échéancier de crédit : les compter en
+    # plus des montants calculés reviendrait à les déduire deux fois.
+    TYPES_COUVERTS_PAR_ECHEANCIER = ('INTERETS', 'ASSURANCE_EMPRUNT')
+
     @staticmethod
     def generer_bilan_fiscal(immeuble, annee):
         """
         Génère un bilan fiscal annuel pour un immeuble.
         Format adapté à la déclaration 2044 (revenus fonciers).
+
+        Les intérêts et l'assurance emprunteur sont pris depuis l'échéancier des
+        crédits quand il existe ; à défaut seulement, depuis les charges saisies
+        à la main.
         """
-        # Revenus bruts
         loyers_bruts = RentabiliteCalculator.get_loyers_annuels(immeuble, annee)
 
-        # Charges par type
-        charges = immeuble.charges_fiscales.filter(annee=annee)
+        interets_echeancier = RentabiliteCalculator.get_interets_annuels(immeuble, annee)
+        assurance_echeancier = RentabiliteCalculator.get_assurance_emprunt_annuelle(immeuble, annee)
+
+        charges_saisies = immeuble.charges_fiscales.filter(annee=annee)
+
+        # Repli : sans échéancier, on retient ce qui a été saisi manuellement.
+        interets_saisis = charges_saisies.filter(type_charge='INTERETS').aggregate(
+            total=Sum('montant'))['total'] or Decimal('0')
+        assurance_saisie = charges_saisies.filter(type_charge='ASSURANCE_EMPRUNT').aggregate(
+            total=Sum('montant'))['total'] or Decimal('0')
+
+        interets_emprunts = interets_echeancier or interets_saisis
+        assurance_emprunt = assurance_echeancier or assurance_saisie
+        source_interets = 'echeancier' if interets_echeancier else 'saisie_manuelle'
+
+        # Les autres charges, ventilées par type
         charges_par_type = {}
-        for charge in charges:
-            type_charge = charge.get_type_charge_display()
-            if type_charge not in charges_par_type:
-                charges_par_type[type_charge] = 0
-            charges_par_type[type_charge] += float(charge.montant)
+        for charge in charges_saisies.exclude(
+            type_charge__in=FiscaliteCalculator.TYPES_COUVERTS_PAR_ECHEANCIER
+        ):
+            libelle = charge.get_type_charge_display()
+            charges_par_type[libelle] = charges_par_type.get(libelle, Decimal('0')) + charge.montant
 
-        total_charges = sum(charges_par_type.values())
+        total_charges = sum(charges_par_type.values(), Decimal('0'))
 
-        # Intérêts d'emprunt (calculés depuis les échéanciers)
-        interets_emprunts = RentabiliteCalculator.get_interets_annuels(immeuble, annee)
-
-        # Assurance emprunt
-        assurance_emprunt = 0
-        date_debut = date(annee, 1, 1)
-        date_fin = date(annee, 12, 31)
-        for credit in immeuble.credits.all():
-            assurance = credit.echeances.filter(
-                date_echeance__gte=date_debut,
-                date_echeance__lte=date_fin
-            ).aggregate(total=Sum('assurance'))['total'] or 0
-            assurance_emprunt += float(assurance)
-
-        # Résultat foncier
         resultat_foncier = loyers_bruts - total_charges - interets_emprunts - assurance_emprunt
 
         return {
@@ -411,17 +452,19 @@ class FiscaliteCalculator:
             'regime_fiscal': immeuble.get_regime_fiscal_display(),
             'revenus': {
                 'loyers_bruts': loyers_bruts,
+                'loyers_theoriques': True,
             },
             'charges': {
                 'detail': charges_par_type,
                 'total_charges_deductibles': total_charges,
                 'interets_emprunts': interets_emprunts,
                 'assurance_emprunt': assurance_emprunt,
+                'source_interets': source_interets,
             },
             'resultat': {
                 'total_charges': total_charges + interets_emprunts + assurance_emprunt,
                 'resultat_foncier': resultat_foncier,
-                'deficit_reportable': min(0, resultat_foncier),
+                'deficit_reportable': min(Decimal('0'), resultat_foncier),
             },
         }
 
@@ -434,9 +477,9 @@ class FiscaliteCalculator:
 
         immeubles = Immeuble.objects.filter(proprietaire=proprietaire)
         bilans = []
-        total_revenus = 0
-        total_charges = 0
-        total_resultat = 0
+        total_revenus = Decimal('0')
+        total_charges = Decimal('0')
+        total_resultat = Decimal('0')
 
         for immeuble in immeubles:
             bilan = FiscaliteCalculator.generer_bilan_fiscal(immeuble, annee)
@@ -467,26 +510,28 @@ class RatiosCalculator:
         """
         from .models import Immeuble
 
-        total_mensualites = 0
-        total_loyers = 0
+        total_mensualites = Decimal('0')
+        total_loyers = Decimal('0')
 
         for immeuble in Immeuble.objects.filter(proprietaire=proprietaire):
             for credit in immeuble.credits.all():
                 total_mensualites += credit.mensualite
 
             for local in immeuble.locaux.all():
-                bail_actif = local.baux.filter(actif=True, date_fin__isnull=True).first()
+                bail_actif = next(
+                    (b for b in local.baux.all() if b.actif and b.date_fin is None), None
+                )
                 if bail_actif:
-                    loyer = float(bail_actif.loyer_hc)
-                    # Si le bail est trimestriel, diviser par 3 pour avoir l'équivalent mensuel
-                    if bail_actif.frequence_paiement == 'TRIMESTRIEL':
-                        loyer = loyer / 3
-                    total_loyers += loyer
+                    tarif = bail_actif.tarification_actuelle
+                    if tarif:
+                        total_loyers += RentabiliteCalculator._loyer_mensuel_equivalent(
+                            bail_actif, tarif
+                        )
 
         if total_loyers == 0:
             return None
 
-        return (total_mensualites / total_loyers) * 100
+        return float(total_mensualites / total_loyers * 100)
 
     @staticmethod
     def get_taux_vacance(immeuble, annee):
@@ -517,9 +562,10 @@ class RatiosCalculator:
                 jours = (fin - debut).days + 1
                 total_jours_vacants += jours
 
-        # Moyenne par local
+        # Moyenne par local, sur la durée réelle de l'année (bissextile comprise)
+        jours_annee = 366 if calendar.isleap(annee) else 365
         jours_vacants_moyen = total_jours_vacants / total_locaux
-        return (jours_vacants_moyen / 365) * 100
+        return (jours_vacants_moyen / jours_annee) * 100
 
     @staticmethod
     def get_taux_occupation(immeuble, annee):

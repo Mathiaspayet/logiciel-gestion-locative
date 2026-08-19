@@ -1,6 +1,10 @@
-django>=5.0,<7.0
-reportlab
-django-jazzmin
-python-dateutil
-gunicorn
-whitenoise
+# Versions epinglees : l'image est reconstruite et deployee automatiquement par
+# Watchtower, une publication amont cassante arriverait sinon directement en
+# production. Ces versions sont celles validees par la suite de tests.
+# Mise a jour : modifier une version ici, verifier que `manage.py test` passe.
+Django==5.2.17
+django-jazzmin==3.0.5
+reportlab==5.0.0
+python-dateutil==2.9.0.post0
+gunicorn==26.1.0
+whitenoise==6.12.0

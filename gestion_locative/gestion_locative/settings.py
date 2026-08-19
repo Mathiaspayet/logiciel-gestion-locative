@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -20,14 +22,31 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-nqcblgw@xfv%j-z*#zr((z*aw9d=gdkhzxj*0qf74f74dwltlt'
-)
+# DEBUG est desactive par defaut : une variable d'environnement manquante ne doit
+# jamais faire demarrer l'application en mode developpement sur le NAS.
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False').lower() in ('true', '1', 'yes')
 
-DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+
+if not SECRET_KEY:
+    if DEBUG:
+        # Cle jetable, uniquement pour le developpement local.
+        SECRET_KEY = 'django-insecure-dev-only-do-not-use-in-production'
+    else:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY est absent. Generez une cle avec :\n"
+            "  python -c \"from django.core.management.utils import get_random_secret_key; "
+            "print(get_random_secret_key())\"\n"
+            "puis ajoutez-la au fichier .env (DJANGO_SECRET_KEY=...)."
+        )
 
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+
+# La boucle locale est toujours autorisee : c'est par elle que passe la sonde de
+# sante du conteneur, qui ne connait pas le nom d'hote public.
+for _hote_local in ('127.0.0.1', 'localhost'):
+    if _hote_local not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_hote_local)
 
 # Version info (injectée par le CI/CD)
 BUILD_VERSION = os.environ.get('BUILD_VERSION', 'dev')[:7]
@@ -127,6 +146,11 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# Fichiers uploades (justificatifs fiscaux) : dans le volume persistant, sinon ils
+# disparaissent a chaque recreation du conteneur par Watchtower.
+MEDIA_URL = '/media/'
+MEDIA_ROOT = Path(os.environ.get('DJANGO_MEDIA_ROOT', BASE_DIR / 'media'))
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
 
@@ -163,6 +187,16 @@ SESSION_COOKIE_HTTPONLY = True
 # Limite la taille des uploads (10 MB)
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+
+# Cache : partage entre les workers gunicorn (compteur de tentatives de
+# connexion, indices INSEE). Un cache memoire serait local a chaque worker.
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': os.environ.get('DJANGO_CACHE_DIR', str(BASE_DIR / '.cache')),
+        'TIMEOUT': 300,
+    }
+}
 
 # Logging Configuration
 # https://docs.djangoproject.com/en/6.0/topics/logging/

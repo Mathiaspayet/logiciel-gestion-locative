@@ -3,7 +3,7 @@ Calculateurs pour les opérations complexes de gestion locative.
 """
 import calendar
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,10 @@ class BailCalculator:
         """
         Calcule les provisions de charges mois par mois avec tarifs historiques.
 
+        Chaque mois est découpé en segments de tarification : un bail qui démarre
+        le 15, ou une révision qui prend effet en cours de mois, sont facturés au
+        prorata des jours réellement couverts par chaque tarif.
+
         Args:
             bail: Instance de Bail
             date_debut: Date de début de la période
@@ -24,12 +28,12 @@ class BailCalculator:
 
         Returns:
             tuple: (total_provisions, details_list)
-                - total_provisions (float): Montant total des provisions
-                - details_list (list): Liste des calculs détaillés par mois
+                - total_provisions (Decimal): Montant total des provisions
+                - details_list (list): Liste des calculs détaillés par segment
         """
         from .exceptions import TarificationNotFoundError
 
-        total_provisions = 0.0
+        total_provisions = Decimal('0')
         details = []
 
         logger.info(f"Calcul provisions pour {bail} du {date_debut} au {date_fin}")
@@ -40,41 +44,67 @@ class BailCalculator:
 
         if start_date > end_date:
             logger.warning(f"Période invalide pour {bail}: start > end")
-            return 0.0, ["Aucune période de présence"]
+            return Decimal('0'), ["Aucune période de présence"]
 
         # Parcourir mois par mois
         curr = date(start_date.year, start_date.month, 1)
 
         while curr <= end_date:
             # Fin du mois
-            last_day = calendar.monthrange(curr.year, curr.month)[1]
-            month_end = date(curr.year, curr.month, last_day)
+            nb_jours_mois = calendar.monthrange(curr.year, curr.month)[1]
+            month_end = date(curr.year, curr.month, nb_jours_mois)
 
             # Intersection avec occupation
             p_start = max(curr, start_date)
             p_end = min(month_end, end_date)
 
             if p_start <= p_end:
-                # RÉCUPÉRER TARIF DU 1ER DU MOIS
-                tarif_mois = bail.get_tarification_at(curr)
+                mois_libelle = curr.strftime('%m/%Y')
+                jours_couverts = 0
 
-                if not tarif_mois:
-                    raise TarificationNotFoundError(curr, bail)
+                for tarif in bail.get_tarifications_for_period(p_start, p_end):
+                    seg_start = max(p_start, tarif.date_debut)
+                    seg_end = min(p_end, tarif.date_fin) if tarif.date_fin else p_end
+
+                    if seg_start > seg_end:
+                        continue
+
+                    nb_jours_segment = (seg_end - seg_start).days + 1
+                    jours_couverts += nb_jours_segment
+
+                    if nb_jours_segment == nb_jours_mois:
+                        montant_segment = tarif.charges
+                        detail = (
+                            f"{mois_libelle} : Mois complet ({tarif.charges}€) "
+                            f"-> {montant_segment:.2f}€"
+                        )
+                    else:
+                        montant_segment = (
+                            tarif.charges * Decimal(nb_jours_segment) / Decimal(nb_jours_mois)
+                        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                        detail = (
+                            f"{mois_libelle} : Partiel {nb_jours_segment}/{nb_jours_mois}j "
+                            f"du {seg_start.strftime('%d/%m')} au {seg_end.strftime('%d/%m')} "
+                            f"({tarif.charges}€) -> {montant_segment:.2f}€"
+                        )
+
+                    details.append(detail)
+                    total_provisions += montant_segment
+                    logger.debug(f"  {detail}")
 
                 nb_jours_presence = (p_end - p_start).days + 1
-                nb_jours_mois = last_day
-
-                if nb_jours_presence == nb_jours_mois:
-                    montant_mois = float(tarif_mois.charges)
-                    detail = f"{curr.strftime('%m/%Y')} : Mois complet ({tarif_mois.charges}€) -> {montant_mois:.2f}€"
-                else:
-                    montant_mois = float(tarif_mois.charges) * (nb_jours_presence / nb_jours_mois)
-                    detail = f"{curr.strftime('%m/%Y')} : Partiel {nb_jours_presence}/{nb_jours_mois}j ({tarif_mois.charges}€) -> {montant_mois:.2f}€"
-
-                details.append(detail)
-                total_provisions += montant_mois
-
-                logger.debug(f"  {detail}")
+                if jours_couverts == 0:
+                    # Aucune tarification ne couvre ce mois de présence : le décompte
+                    # serait faux, on refuse de le produire.
+                    raise TarificationNotFoundError(p_start, bail)
+                if jours_couverts < nb_jours_presence:
+                    manquants = nb_jours_presence - jours_couverts
+                    avertissement = (
+                        f"{mois_libelle} : ATTENTION, {manquants} jour(s) de présence "
+                        f"sans tarification, non facturés."
+                    )
+                    details.append(avertissement)
+                    logger.warning(f"{bail} - {avertissement}")
 
             # Mois suivant
             next_month = curr.month + 1

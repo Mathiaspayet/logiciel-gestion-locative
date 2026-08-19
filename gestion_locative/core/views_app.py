@@ -1,11 +1,16 @@
+import hashlib
 import logging
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect, get_object_or_404
+from django.core.exceptions import ValidationError
+from django.core.cache import cache
+from django.db import transaction
+from django.shortcuts import render, redirect, get_object_or_404, resolve_url
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from django import forms as django_forms
 from django.http import HttpResponse
@@ -26,8 +31,29 @@ from core.patrimoine_calculators import (
     FiscaliteCalculator, CreditGenerator,
 )
 
-logger = logging.getLogger(__name__)
 from core.views import generer_periodes_disponibles
+
+logger = logging.getLogger(__name__)
+
+# Hypothese de revalorisation du patrimoine utilisee par la projection a 10 ans.
+# Affichee telle quelle sur le graphique : ce n'est pas une donnee mesuree.
+TAUX_REVALORISATION_ANNUEL = Decimal('1.02')
+
+
+# Limitation des tentatives de connexion (M-04)
+MAX_TENTATIVES_CONNEXION = 5
+DUREE_BLOCAGE_SECONDES = 15 * 60
+
+
+def _cle_tentatives(request, username):
+    """Clé de comptage : combinaison de l'IP source et de l'identifiant visé.
+
+    L'ensemble est haché : un identifiant saisi peut contenir n'importe quel
+    caractère, y compris ceux qu'un backend de cache refuse.
+    """
+    ip = request.META.get('REMOTE_ADDR', 'inconnue')
+    empreinte = hashlib.sha256(f"{ip}:{username}".encode('utf-8')).hexdigest()[:32]
+    return f"login-echecs:{empreinte}"
 
 
 def login_view(request):
@@ -39,15 +65,39 @@ def login_view(request):
     if request.method == 'POST':
         username = request.POST.get('username', '')
         password = request.POST.get('password', '')
+        cle = _cle_tentatives(request, username)
+        tentatives = cache.get(cle, 0)
+
+        if tentatives >= MAX_TENTATIVES_CONNEXION:
+            logger.warning("Connexion bloquee (trop de tentatives) pour %s", cle)
+            error = (
+                "Trop de tentatives echouees. Reessayez dans "
+                f"{DUREE_BLOCAGE_SECONDES // 60} minutes."
+            )
+            return render(request, 'app/auth/login.html', {'error': error})
+
         user = authenticate(request, username=username, password=password)
         if user is not None:
+            cache.delete(cle)
             login(request, user)
-            next_url = request.GET.get('next', 'app_dashboard')
-            return redirect(next_url)
-        else:
-            error = "Identifiants incorrects."
+            return redirect(_url_de_redirection(request))
+
+        cache.set(cle, tentatives + 1, DUREE_BLOCAGE_SECONDES)
+        error = "Identifiants incorrects."
 
     return render(request, 'app/auth/login.html', {'error': error})
+
+
+def _url_de_redirection(request):
+    """Valide le parametre ?next= pour ne jamais rediriger hors du site (C-05)."""
+    next_url = request.GET.get('next') or request.POST.get('next')
+    if next_url and url_has_allowed_host_and_scheme(
+        url=next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return next_url
+    return resolve_url('app_dashboard')
 
 
 def logout_view(request):
@@ -68,9 +118,9 @@ def dashboard_view(request):
     ).order_by('nom')
 
     immeubles_data = []
-    total_valeur = 0
-    total_crd = 0
-    total_cashflow = 0
+    total_valeur = Decimal('0')
+    total_crd = Decimal('0')
+    total_cashflow = Decimal('0')
     annee = date.today().year
 
     for immeuble in immeubles:
@@ -82,9 +132,9 @@ def dashboard_view(request):
         cashflow = RentabiliteCalculator.get_cashflow_mensuel(immeuble)
         taux_occupation = RatiosCalculator.get_taux_occupation(immeuble, annee)
 
-        total_valeur += valeur or 0
-        total_crd += crd or 0
-        total_cashflow += cashflow or 0
+        total_valeur += valeur or Decimal('0')
+        total_crd += crd or Decimal('0')
+        total_cashflow += cashflow or Decimal('0')
 
         immeubles_data.append({
             'immeuble': immeuble,
@@ -541,37 +591,53 @@ def credit_create_view(request, immeuble_pk):
 
     if request.method == 'POST':
         try:
-            nom_banque = request.POST.get('nom_banque', '').strip()
-            numero_pret = request.POST.get('numero_pret', '').strip()
-            date_debut_str = request.POST.get('date_debut')
-            type_credit = request.POST.get('type_credit', 'AMORTISSABLE')
-            assurance_mensuelle = Decimal(request.POST.get('assurance_mensuelle') or '0')
-
-            capital = Decimal(request.POST.get('capital_emprunte_final') or request.POST.get('capital_emprunte'))
-            taux = Decimal(request.POST.get('taux_interet_final') or request.POST.get('taux_interet'))
-            duree = int(request.POST.get('duree_mois_final') or request.POST.get('duree_mois'))
-
-            credit = CreditImmobilier.objects.create(
+            credit = CreditImmobilier(
                 immeuble=immeuble,
-                nom_banque=nom_banque,
-                numero_pret=numero_pret,
-                capital_emprunte=capital,
-                taux_interet=taux,
-                duree_mois=duree,
-                date_debut=datetime.strptime(date_debut_str, '%Y-%m-%d').date(),
-                type_credit=type_credit,
-                assurance_mensuelle=assurance_mensuelle,
+                nom_banque=request.POST.get('nom_banque', '').strip(),
+                numero_pret=request.POST.get('numero_pret', '').strip(),
+                capital_emprunte=Decimal(
+                    request.POST.get('capital_emprunte_final')
+                    or request.POST.get('capital_emprunte') or '0'
+                ),
+                taux_interet=Decimal(
+                    request.POST.get('taux_interet_final')
+                    or request.POST.get('taux_interet') or '0'
+                ),
+                duree_mois=int(
+                    request.POST.get('duree_mois_final')
+                    or request.POST.get('duree_mois') or '0'
+                ),
+                date_debut=datetime.strptime(
+                    request.POST.get('date_debut') or '', '%Y-%m-%d'
+                ).date(),
+                type_credit=request.POST.get('type_credit', 'AMORTISSABLE'),
+                assurance_mensuelle=Decimal(request.POST.get('assurance_mensuelle') or '0'),
             )
+            credit.full_clean()
 
-            generator = CreditGenerator(credit)
-            generator.creer_echeances_en_base()
+            # Le credit et son echeancier sont indissociables : soit les deux sont
+            # ecrits, soit aucun des deux.
+            with transaction.atomic():
+                credit.save()
+                nb_echeances = CreditGenerator(credit).creer_echeances_en_base()
 
-            messages.success(request, f'Credit {nom_banque} cree avec succes ({credit.echeances.count()} echeances generees).')
+            messages.success(
+                request,
+                f'Credit {credit.nom_banque} cree avec succes ({nb_echeances} echeances generees).'
+            )
             return redirect('app_immeuble_detail', pk=immeuble.pk)
 
-        except Exception as e:
-            logger.exception("Erreur lors de la creation du credit via assistant")
-            messages.error(request, f'Erreur lors de la creation du credit : {e}')
+        except ValidationError as e:
+            logger.warning("Donnees de credit invalides : %s", e.message_dict)
+            for messages_champ in e.message_dict.values():
+                for message in messages_champ:
+                    messages.error(request, message)
+        except (InvalidOperation, ValueError, TypeError):
+            logger.exception("Saisie invalide dans l'assistant credit")
+            messages.error(
+                request,
+                "Saisie invalide : verifiez le capital, le taux, la duree et la date de debut."
+            )
 
     return render(request, 'app/credits/assistant.html', {'immeuble': immeuble})
 
@@ -921,7 +987,6 @@ def cle_detail_view(request, pk):
 @login_required
 def patrimoine_dashboard_view(request):
     """Dashboard patrimoine global avec graphiques."""
-    import json
     from dateutil.relativedelta import relativedelta
 
     immeubles = Immeuble.objects.all().prefetch_related(
@@ -929,9 +994,9 @@ def patrimoine_dashboard_view(request):
     )
 
     immeubles_data = []
-    total_valeur = 0
-    total_crd = 0
-    total_cashflow = 0
+    total_valeur = Decimal('0')
+    total_crd = Decimal('0')
+    total_cashflow = Decimal('0')
     total_locaux = 0
 
     for immeuble in immeubles:
@@ -949,11 +1014,11 @@ def patrimoine_dashboard_view(request):
         immeubles_data.append({
             'id': immeuble.id,
             'nom': immeuble.nom,
-            'valeur_actuelle': valeur,
-            'capital_restant_du': crd,
-            'valeur_nette': valeur - crd,
+            'valeur_actuelle': float(valeur),
+            'capital_restant_du': float(crd),
+            'valeur_nette': float(valeur - crd),
             'rendement_brut': rendement,
-            'cashflow': cashflow,
+            'cashflow': float(cashflow),
         })
 
     # Projection 10 ans
@@ -966,14 +1031,15 @@ def patrimoine_dashboard_view(request):
     for i in range(11):
         annee = today.year + i
         projection_labels.append(str(annee))
-        valeur_projetee = total_valeur * (1.02 ** i)
+        valeur_projetee = float(total_valeur) * float(TAUX_REVALORISATION_ANNUEL ** i)
         projection_valeurs.append(round(valeur_projetee, 0))
         target_date = date(annee, 12, 31)
-        crd_projete = sum(
-            credit.get_capital_restant_du_at(target_date)
-            for immeuble in immeubles
-            for credit in immeuble.credits.all()
-        )
+        crd_projete = float(sum(
+            (credit.get_capital_restant_du_at(target_date)
+             for immeuble in immeubles
+             for credit in immeuble.credits.all()),
+            Decimal('0'),
+        ))
         projection_crd.append(round(crd_projete, 0))
         projection_nette.append(round(valeur_projetee - crd_projete, 0))
 
@@ -985,13 +1051,14 @@ def patrimoine_dashboard_view(request):
         'total_cashflow': total_cashflow,
         'nb_immeubles': immeubles.count(),
         'nb_locaux': total_locaux,
-        'immeubles_json': json.dumps(immeubles_data),
-        'projection_json': json.dumps({
+        'immeubles_data_json': immeubles_data,
+        'projection_data_json': {
             'labels': projection_labels,
             'valeurs': projection_valeurs,
             'crd': projection_crd,
             'nette': projection_nette,
-        }),
+        },
+        'taux_revalorisation': TAUX_REVALORISATION_ANNUEL,
     }
 
     return render(request, 'app/patrimoine/dashboard.html', context)

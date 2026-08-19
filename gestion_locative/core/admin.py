@@ -636,7 +636,7 @@ class CreditImmobilierAdmin(admin.ModelAdmin):
 
     def get_crd(self, obj):
         crd = obj.capital_restant_du
-        pourcentage = (crd / float(obj.capital_emprunte)) * 100 if obj.capital_emprunte else 0
+        pourcentage = (crd / obj.capital_emprunte * 100) if obj.capital_emprunte else 0
         return f"{crd:,.0f} € ({pourcentage:.0f}%)".replace(',', ' ')
     get_crd.short_description = "Capital restant dû"
 

@@ -13,6 +13,9 @@ media/
 # Static files collectés (générés par collectstatic)
 staticfiles/
 
+# Cache Django (fichiers)
+.cache/
+
 # Docker & env
 .env
 logs/

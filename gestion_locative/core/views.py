@@ -3,7 +3,9 @@ Vues refactorisées pour la génération de documents PDF.
 Version optimisée utilisant PDFGenerator et templates Django.
 """
 import logging
+import re
 from datetime import datetime, date, timedelta
+from decimal import Decimal
 from io import BytesIO
 
 from django.http import HttpResponse
@@ -12,6 +14,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.middleware.csrf import get_token
 from django.contrib.admin.views.decorators import staff_member_required
+from django.core.cache import cache
 
 from .models import Immeuble, Bail, Local
 from .pdf_generator import PDFGenerator
@@ -22,10 +25,19 @@ from .patrimoine_calculators import PatrimoineCalculator, RentabiliteCalculator
 # Configuration logging
 logger = logging.getLogger(__name__)
 
+# Hypothese de revalorisation annuelle du patrimoine pour les projections.
+TAUX_REVALORISATION_ANNUEL = 1.02
+
 
 # ============================================================================
 # HELPERS
 # ============================================================================
+
+def _nom_fichier_sur(valeur, defaut="document"):
+    """Ne garde que des caracteres surs pour un nom de fichier telecharge."""
+    nettoye = re.sub(r'[^A-Za-z0-9._-]', '_', str(valeur))[:60]
+    return nettoye or defaut
+
 
 # Traduction des mois en français
 MOIS_FR = {
@@ -155,11 +167,11 @@ def generer_quittance_pdf(request, pk):
         occupant = bail.occupants.filter(role='LOCATAIRE').first()
         nom_locataire = occupant.nom.upper().replace(" ", "_") if occupant else "Inconnu"
 
-        date_debut = min(periodes_selectionnees)
-        date_fin = max(periodes_selectionnees)
+        date_debut = _nom_fichier_sur(min(periodes_selectionnees), "debut")
+        date_fin = _nom_fichier_sur(max(periodes_selectionnees), "fin")
         periode_str = f"{date_debut}_{date_fin}" if date_debut != date_fin else date_debut
 
-        filename = f"Quittance_{nom_locataire}_{periode_str}.pdf"
+        filename = f"Quittance_{_nom_fichier_sur(nom_locataire)}_{periode_str}.pdf"
 
         # Retourner PDF
         response = HttpResponse(pdf_content, content_type='application/pdf')
@@ -217,8 +229,8 @@ def generer_avis_echeance_pdf(request, pk):
         occupant = bail.occupants.filter(role='LOCATAIRE').first()
         nom_locataire = occupant.nom.upper().replace(" ", "_") if occupant else "Inconnu"
 
-        date_debut = min(periodes_selectionnees)
-        filename = f"AvisEcheance_{nom_locataire}_{date_debut}.pdf"
+        date_debut = _nom_fichier_sur(min(periodes_selectionnees), "debut")
+        filename = f"AvisEcheance_{_nom_fichier_sur(nom_locataire)}_{date_debut}.pdf"
 
         response = HttpResponse(pdf_content, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -280,7 +292,10 @@ def generer_regularisation_pdf(request, pk):
         pdf_content = generator.generer_regularisation(date_debut, date_fin, enregistrer)
 
         # Préparer nom fichier
-        filename = f"Regularisation_{date_debut}_{date_fin}.pdf"
+        filename = (
+            f"Regularisation_{_nom_fichier_sur(date_debut)}"
+            f"_{_nom_fichier_sur(date_fin)}.pdf"
+        )
 
         # Retourner PDF
         response = HttpResponse(pdf_content, content_type='application/pdf')
@@ -366,14 +381,22 @@ def generer_solde_tout_compte_pdf(request, pk):
 # VUES PDF REFACTORISÉES - RÉVISION LOYER
 # ============================================================================
 
-def fetch_insee_indices(url, limit=8, max_retries=3):
+def fetch_insee_indices(url, limit=8, max_retries=2):
     """Récupère les derniers indices (Trimestre, Valeur) sur le site de l'INSEE.
-    Retry avec backoff exponentiel en cas d'erreur réseau.
+
+    Le résultat est mis en cache 24 h : les indices ne changent qu'une fois par
+    trimestre, et l'appel réseau bloque un worker gunicorn le temps de la réponse.
     """
     import urllib.request
     import urllib.error
     import re
     import time
+
+    cle_cache = f"insee-indices:{url}"
+    en_cache = cache.get(cle_cache)
+    if en_cache is not None:
+        logger.debug("Indices INSEE servis depuis le cache")
+        return en_cache
 
     for attempt in range(max_retries):
         try:
@@ -384,7 +407,7 @@ def fetch_insee_indices(url, limit=8, max_retries=3):
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
             )
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=5) as response:
                 html = response.read().decode('utf-8')
                 pattern = r'<th[^>]*>(T[1-4] [0-9]{4})</th>[\s\S]*?<td class="nombre">([0-9]+,[0-9]+)</td>'
                 matches = re.findall(pattern, html)
@@ -394,6 +417,16 @@ def fetch_insee_indices(url, limit=8, max_retries=3):
                     trimestre = match[0]
                     valeur = match[1].replace(',', '.')
                     indices.append({'trimestre': trimestre, 'valeur': float(valeur)})
+
+                if not indices:
+                    # Le format de la page a change : mieux vaut le savoir que
+                    # de servir une liste vide sans explication.
+                    logger.error(
+                        "Aucun indice extrait de %s : le format de la page INSEE a "
+                        "probablement change.", url,
+                    )
+                else:
+                    cache.set(cle_cache, indices, 24 * 3600)
                 return indices
         except urllib.error.URLError as e:
             wait_time = 2 ** attempt
@@ -578,6 +611,10 @@ def creer_tarification_from_revision(request, pk):
 
             logger.info(f"Nouvelle tarification {nouvelle_tarif.pk} créée pour bail {bail.pk}")
 
+        # Le bail garde en memoire ses anciennes tarifications : on l'actualise
+        # avant de generer le courrier.
+        bail.vider_cache_tarifications()
+
         # 3. Générer le courrier PDF
         generator = PDFGenerator(bail)
         pdf_content = generator.generer_revision_loyer(
@@ -622,9 +659,9 @@ def dashboard_patrimoine(request):
 
     # Calculer données pour chaque immeuble
     immeubles_data = []
-    total_valeur = 0
-    total_crd = 0
-    total_cashflow = 0
+    total_valeur = Decimal('0')
+    total_crd = Decimal('0')
+    total_cashflow = Decimal('0')
     total_locaux = 0
 
     for immeuble in immeubles:
@@ -643,11 +680,11 @@ def dashboard_patrimoine(request):
             'id': immeuble.id,
             'nom': immeuble.nom,
             'regime_fiscal_display': immeuble.get_regime_fiscal_display(),
-            'valeur_actuelle': valeur,
-            'capital_restant_du': crd,
-            'valeur_nette': valeur - crd,
+            'valeur_actuelle': float(valeur),
+            'capital_restant_du': float(crd),
+            'valeur_nette': float(valeur - crd),
             'rendement_brut': rendement,
-            'cashflow': cashflow,
+            'cashflow': float(cashflow),
         })
 
     # Totaux
@@ -660,8 +697,7 @@ def dashboard_patrimoine(request):
         'nb_locaux': total_locaux,
     }
 
-    # Données JSON pour les graphiques
-    immeubles_json = json.dumps(immeubles_data)
+    # Données pour les graphiques (rendues via json_script, jamais via |safe)
 
     # Projection sur 10 ans
     today = date.today()
@@ -675,33 +711,33 @@ def dashboard_patrimoine(request):
         projection_labels.append(str(annee))
 
         # Valeur (on garde la même pour simplifier, ou on ajoute une appréciation)
-        valeur_projetee = total_valeur * (1.02 ** i)  # +2% par an
+        valeur_projetee = float(total_valeur) * (TAUX_REVALORISATION_ANNUEL ** i)
         projection_valeurs.append(round(valeur_projetee, 0))
 
         # CRD (décroissant)
         target_date = date(annee, 12, 31)
-        crd_projete = sum(
-            credit.get_capital_restant_du_at(target_date)
-            for immeuble in immeubles
-            for credit in immeuble.credits.all()
-        )
+        crd_projete = float(sum(
+            (credit.get_capital_restant_du_at(target_date)
+             for immeuble in immeubles
+             for credit in immeuble.credits.all()),
+            Decimal('0'),
+        ))
         projection_crd.append(round(crd_projete, 0))
 
         # Valeur nette
         projection_nette.append(round(valeur_projetee - crd_projete, 0))
 
-    projection_json = json.dumps({
-        'labels': projection_labels,
-        'valeurs': projection_valeurs,
-        'crd': projection_crd,
-        'nette': projection_nette,
-    })
-
     context = {
         'immeubles': immeubles_data,
         'totaux': totaux,
-        'immeubles_json': immeubles_json,
-        'projection_json': projection_json,
+        'immeubles_data_json': immeubles_data,
+        'projection_data_json': {
+            'labels': projection_labels,
+            'valeurs': projection_valeurs,
+            'crd': projection_crd,
+            'nette': projection_nette,
+        },
+        'taux_revalorisation': TAUX_REVALORISATION_ANNUEL,
     }
 
     return render(request, 'admin/core/dashboard_patrimoine.html', context)
@@ -729,10 +765,12 @@ def dashboard_immeuble_detail(request, immeuble_id):
     annee_courante = date.today().year
 
     # === INDICATEURS PATRIMONIAUX ===
-    valeur_actuelle = PatrimoineCalculator.get_valeur_actuelle(immeuble)
-    capital_restant_du = PatrimoineCalculator.get_capital_restant_du(immeuble)
-    valeur_nette = PatrimoineCalculator.get_valeur_nette(immeuble)
-    plus_value_latente = PatrimoineCalculator.get_plus_value_latente(immeuble)
+    # Vue de presentation : les montants Decimal sont convertis une fois ici,
+    # car tout le reste de la fonction (et les graphiques) travaille en float.
+    valeur_actuelle = float(PatrimoineCalculator.get_valeur_actuelle(immeuble))
+    capital_restant_du = float(PatrimoineCalculator.get_capital_restant_du(immeuble))
+    valeur_nette = float(PatrimoineCalculator.get_valeur_nette(immeuble))
+    plus_value_latente = float(PatrimoineCalculator.get_plus_value_latente(immeuble))
     cout_acquisition = float(immeuble.prix_achat or 0) + float(immeuble.frais_notaire or 0) + float(immeuble.frais_agence or 0)
 
     # === INDICATEURS DE SURFACE ET PRIX AU M² ===
@@ -801,12 +839,12 @@ def dashboard_immeuble_detail(request, immeuble_id):
     # === INDICATEURS DE RENTABILITÉ ===
     rendement_brut = RentabiliteCalculator.get_rendement_brut(immeuble, annee_courante)
     rendement_net = RentabiliteCalculator.get_rendement_net(immeuble, annee_courante)
-    cashflow_mensuel = RentabiliteCalculator.get_cashflow_mensuel(immeuble)
+    cashflow_mensuel = float(RentabiliteCalculator.get_cashflow_mensuel(immeuble))
     cashflow_annuel = cashflow_mensuel * 12
 
     # === INDICATEURS DE CHARGES ===
-    charges_annuelles = RentabiliteCalculator.get_charges_annuelles(immeuble, annee_courante)
-    interets_annuels = RentabiliteCalculator.get_interets_annuels(immeuble, annee_courante)
+    charges_annuelles = float(RentabiliteCalculator.get_charges_annuelles(immeuble, annee_courante))
+    interets_annuels = float(RentabiliteCalculator.get_interets_annuels(immeuble, annee_courante))
 
     # Détail des charges de l'immeuble (charges fiscales)
     from .models import ChargeFiscale
@@ -866,11 +904,13 @@ def dashboard_immeuble_detail(request, immeuble_id):
     today = date.today()
     for i in range(11):
         target_date = date(today.year + i, 12, 31)
-        crd = sum(c.get_capital_restant_du_at(target_date) for c in credits)
+        crd = float(sum(
+            (c.get_capital_restant_du_at(target_date) for c in credits), Decimal('0')
+        ))
         projection_crd.append({
             'annee': today.year + i,
             'crd': round(crd, 0),
-            'valeur_nette': round(valeur_actuelle * (1.02 ** i) - crd, 0)
+            'valeur_nette': round(valeur_actuelle * (TAUX_REVALORISATION_ANNUEL ** i) - crd, 0)
         })
 
     # === CONTEXTE ===
@@ -926,13 +966,13 @@ def dashboard_immeuble_detail(request, immeuble_id):
         'locaux_details': locaux_details,
         'credits_details': credits_details,
 
-        # Données JSON pour graphiques
-        'evolution_valeur_json': json.dumps(evolution_valeur),
-        'projection_crd_json': json.dumps(projection_crd),
-        'locaux_loyers_json': json.dumps([
-            {'nom': item['local'].numero_porte, 'loyer': item['loyer_ttc']}
+        # Données pour graphiques (rendues via json_script, jamais via |safe)
+        'evolution_valeur_data_json': evolution_valeur,
+        'projection_crd_data_json': projection_crd,
+        'locaux_loyers_data_json': [
+            {'nom': item['local'].numero_porte, 'loyer': float(item['loyer_ttc'])}
             for item in locaux_details
-        ]),
+        ],
     }
 
     return render(request, 'admin/core/dashboard_immeuble_detail.html', context)
