@@ -11,9 +11,8 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
-
-from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -29,15 +28,20 @@ DEBUG = os.environ.get('DJANGO_DEBUG', 'False').lower() in ('true', '1', 'yes')
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
 if not SECRET_KEY:
-    if DEBUG:
-        # Cle jetable, uniquement pour le developpement local.
-        SECRET_KEY = 'django-insecure-dev-only-do-not-use-in-production'
-    else:
-        raise ImproperlyConfigured(
-            "DJANGO_SECRET_KEY est absent. Generez une cle avec :\n"
-            "  python -c \"from django.core.management.utils import get_random_secret_key; "
-            "print(get_random_secret_key())\"\n"
-            "puis ajoutez-la au fichier .env (DJANGO_SECRET_KEY=...)."
+    # Cle de repli, publique car presente dans le depot : elle permet a
+    # l'application de demarrer, mais les sessions et jetons CSRF signes avec
+    # elle sont forgeables par quiconque lit ce fichier.
+    # A remplacer par une vraie cle dans le .env :
+    #   python -c "from django.core.management.utils import get_random_secret_key; \
+    #              print(get_random_secret_key())"
+    SECRET_KEY = 'django-insecure-nqcblgw@xfv%j-z*#zr((z*aw9d=gdkhzxj*0qf74f74dwltlt'
+
+    if not DEBUG:
+        print(
+            "ATTENTION : DJANGO_SECRET_KEY est absent, l'application demarre "
+            "avec la cle publique du depot. Les sessions sont forgeables. "
+            "Definissez DJANGO_SECRET_KEY dans le fichier .env.",
+            file=sys.stderr,
         )
 
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
@@ -146,10 +150,16 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Fichiers uploades (justificatifs fiscaux) : dans le volume persistant, sinon ils
+# Les fichiers ecrits par l'application (uploads, cache) vivent a cote de la
+# base de donnees, donc dans le volume persistant du conteneur : sinon ils
 # disparaissent a chaque recreation du conteneur par Watchtower.
+# Aucune variable supplementaire n'est requise dans le .env : le dossier est
+# deduit de DJANGO_DB_PATH.
+DOSSIER_DONNEES = Path(os.environ.get('DJANGO_DB_PATH', BASE_DIR / 'db.sqlite3')).parent
+
+# Fichiers uploades (justificatifs fiscaux)
 MEDIA_URL = '/media/'
-MEDIA_ROOT = Path(os.environ.get('DJANGO_MEDIA_ROOT', BASE_DIR / 'media'))
+MEDIA_ROOT = Path(os.environ.get('DJANGO_MEDIA_ROOT', DOSSIER_DONNEES / 'media'))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
@@ -193,7 +203,7 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
-        'LOCATION': os.environ.get('DJANGO_CACHE_DIR', str(BASE_DIR / '.cache')),
+        'LOCATION': os.environ.get('DJANGO_CACHE_DIR', str(DOSSIER_DONNEES / 'cache')),
         'TIMEOUT': 300,
     }
 }

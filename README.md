@@ -25,8 +25,10 @@ DJANGO_DEBUG=True python manage.py runserver
 L'interface est alors accessible sur `http://127.0.0.1:8000/app/` (nouvelle interface)
 ou `http://127.0.0.1:8000/admin/` (admin Django legacy).
 
-En production, `DJANGO_SECRET_KEY` est **obligatoire** : l'application refuse de
-démarrer sans, plutôt que de retomber sur une clé connue.
+En production, définissez `DJANGO_SECRET_KEY` dans le `.env` : sans elle,
+l'application démarre avec la clé de repli du dépôt, qui est publique — les
+sessions signées avec cette clé sont forgeables. Un avertissement est écrit dans
+les logs du conteneur tant que la variable est absente.
 
 ### Tests
 
