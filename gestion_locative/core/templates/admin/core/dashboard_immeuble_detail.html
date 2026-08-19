@@ -544,10 +544,12 @@
     </div>
 </div>
 
+{{ projection_crd_data_json|json_script:"projection-crd-data" }}
+{{ locaux_loyers_data_json|json_script:"locaux-loyers-data" }}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const projectionData = {{ projection_crd_json|safe }};
-    const locauxDetails = {{ locaux_loyers_json|safe }};
+    const projectionData = JSON.parse(document.getElementById('projection-crd-data').textContent);
+    const locauxDetails = JSON.parse(document.getElementById('locaux-loyers-data').textContent);
 
     console.log('Projection data:', projectionData);
     console.log('Locaux details:', locauxDetails);

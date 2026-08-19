@@ -1,4 +1,7 @@
 from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
+
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -37,7 +40,7 @@ class Immeuble(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
 
     # Champs Acquisition (Phase 1)
-    prix_achat = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="Prix d'acquisition (frais inclus)")
+    prix_achat = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="Prix d'achat (hors frais)")
     date_achat = models.DateField(null=True, blank=True, verbose_name="Date d'acquisition")
     frais_notaire = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Frais de notaire")
     frais_agence = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Frais d'agence")
@@ -48,11 +51,12 @@ class Immeuble(models.Model):
 
     @property
     def cout_total_acquisition(self):
-        """Coût total d'acquisition incluant frais."""
-        total = self.prix_achat or 0
-        total += self.frais_notaire or 0
-        total += self.frais_agence or 0
-        return total
+        """Coût total d'acquisition : prix d'achat hors frais + frais annexes."""
+        return (
+            (self.prix_achat or Decimal('0'))
+            + (self.frais_notaire or Decimal('0'))
+            + (self.frais_agence or Decimal('0'))
+        )
 
     class Meta:
         verbose_name = "Immeuble"
@@ -102,19 +106,41 @@ class Bail(models.Model):
     # NOTE: loyer_hc, charges, taxes, indice_reference, trimestre_reference
     # sont maintenant gérés via le modèle BailTarification (voir properties ci-dessous)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._tarifs_cached = None
+
     @property
     def montant_tva(self):
-        from decimal import Decimal
         if not self.soumis_tva:
             return Decimal('0')
-        return ((Decimal(str(self.loyer_hc)) + Decimal(str(self.charges))) * self.taux_tva) / 100
+        montant = ((self.loyer_hc + self.charges) * self.taux_tva) / 100
+        return montant.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     @property
     def loyer_ttc(self):
-        from decimal import Decimal
-        return Decimal(str(self.loyer_hc)) + Decimal(str(self.charges)) + Decimal(str(self.taxes)) + Decimal(str(self.montant_tva))
+        return self.loyer_hc + self.charges + self.taxes + self.montant_tva
 
     # === TARIFICATION HISTORY METHODS ===
+
+    def _tarifications_cache(self):
+        """Toutes les tarifications du bail, chargées une seule fois par instance.
+
+        Passer par ce cache (au lieu d'un .filter() par appel) évite de repartir
+        en base à chaque lecture de loyer, et laisse les prefetch_related des vues
+        faire leur travail.
+        """
+        if self._tarifs_cached is None:
+            self._tarifs_cached = sorted(
+                self.tarifications.all(),
+                key=lambda t: t.date_debut,
+                reverse=True,
+            )
+        return self._tarifs_cached
+
+    def vider_cache_tarifications(self):
+        """À appeler après avoir créé ou modifié une tarification de ce bail."""
+        self._tarifs_cached = None
 
     def get_tarification_at(self, target_date):
         """
@@ -123,20 +149,20 @@ class Bail(models.Model):
         Retourne la tarification la plus récente (date_debut la plus proche)
         qui couvre la date cible.
         """
-        from django.db.models import Q
-        return self.tarifications.filter(
-            date_debut__lte=target_date
-        ).filter(
-            Q(date_fin__gte=target_date) | Q(date_fin__isnull=True)
-        ).order_by('-date_debut').first()
+        for tarif in self._tarifications_cache():
+            if tarif.date_debut <= target_date and (
+                tarif.date_fin is None or tarif.date_fin >= target_date
+            ):
+                return tarif
+        return None
 
     def get_tarifications_for_period(self, start_date, end_date):
         """Récupère toutes les tarifications qui chevauchent une période."""
-        from django.db.models import Q
-        return self.tarifications.filter(
-            Q(date_debut__lte=end_date) &
-            (Q(date_fin__gte=start_date) | Q(date_fin__isnull=True))
-        ).order_by('date_debut')
+        return [
+            tarif for tarif in reversed(self._tarifications_cache())
+            if tarif.date_debut <= end_date
+            and (tarif.date_fin is None or tarif.date_fin >= start_date)
+        ]
 
     @property
     def tarification_actuelle(self):
@@ -152,19 +178,19 @@ class Bail(models.Model):
     def loyer_hc(self):
         """Loyer HC de la tarification actuelle."""
         tarif = self.tarification_actuelle
-        return tarif.loyer_hc if tarif else 0
+        return tarif.loyer_hc if tarif else Decimal('0')
 
     @property
     def charges(self):
         """Charges de la tarification actuelle."""
         tarif = self.tarification_actuelle
-        return tarif.charges if tarif else 0
+        return tarif.charges if tarif else Decimal('0')
 
     @property
     def taxes(self):
         """Taxes de la tarification actuelle."""
         tarif = self.tarification_actuelle
-        return tarif.taxes if tarif else 0
+        return tarif.taxes if tarif else Decimal('0')
 
     @property
     def indice_reference(self):
@@ -315,6 +341,12 @@ class BailTarification(models.Model):
         self.clean()
         super().save(*args, **kwargs)
 
+        # Si l'instance de bail est deja chargee en memoire, son cache de
+        # tarifications est perime : on l'invalide sans requete supplementaire.
+        bail_charge = self._state.fields_cache.get('bail')
+        if bail_charge is not None:
+            bail_charge.vider_cache_tarifications()
+
 class CleRepartition(models.Model):
     """Définit comment une catégorie de charges est répartie (ex: Charges Générales, Ascenseur, Eau)."""
     MODE_CHOICES = [
@@ -379,6 +411,18 @@ class Consommation(models.Model):
     @property
     def quantite(self):
         return self.index_fin - self.index_debut
+
+    def clean(self):
+        """Un relevé de compteur ne peut pas décroître."""
+        if self.index_debut is not None and self.index_fin is not None:
+            if self.index_fin < self.index_debut:
+                raise ValidationError({
+                    'index_fin': "Le nouvel index ne peut pas être inférieur à l'ancien index."
+                })
+        if self.date_debut and self.date_releve and self.date_debut > self.date_releve:
+            raise ValidationError({
+                'date_debut': "Le début de période doit précéder la date du relevé."
+            })
 
     def __str__(self):
         return f"{self.local} - {self.cle_repartition.nom} : {self.quantite}"
@@ -456,6 +500,13 @@ class Regularisation(models.Model):
         verbose_name = "Régularisation"
         verbose_name_plural = "Régularisations"
         ordering = ['-date_creation']
+        constraints = [
+            # Rejouer le même décompte ne doit pas empiler des doublons dans l'historique.
+            models.UniqueConstraint(
+                fields=['bail', 'date_debut', 'date_fin'],
+                name='une_regularisation_par_periode',
+            ),
+        ]
 
 
 # =============================================================================
@@ -506,27 +557,42 @@ class CreditImmobilier(models.Model):
     def __str__(self):
         return f"{self.nom_banque} - {self.capital_emprunte}€ ({self.immeuble.nom})"
 
+    def clean(self):
+        """Un crédit doit être calculable : durée et capital strictement positifs."""
+        erreurs = {}
+        if not self.duree_mois:
+            erreurs['duree_mois'] = "La durée doit être d'au moins 1 mois."
+        if self.capital_emprunte is not None and self.capital_emprunte <= 0:
+            erreurs['capital_emprunte'] = "Le capital emprunté doit être strictement positif."
+        if self.taux_interet is not None and self.taux_interet < 0:
+            erreurs['taux_interet'] = "Le taux d'intérêt ne peut pas être négatif."
+        if erreurs:
+            raise ValidationError(erreurs)
+
     @property
     def mensualite_hors_assurance(self):
         """Calcule la mensualité hors assurance (formule prêt amortissable)."""
-        from decimal import Decimal, ROUND_HALF_UP
         capital = Decimal(str(self.capital_emprunte))
         taux = Decimal(str(self.taux_interet))
         taux_mensuel = taux / 100 / 12
         n = self.duree_mois
 
+        if not n:
+            return Decimal('0.00')
+
         if self.type_credit == 'IN_FINE':
-            return float((capital * taux_mensuel).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
-        else:
-            if taux_mensuel == 0:
-                return float((capital / n).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
-            mensualite = capital * (taux_mensuel * (1 + taux_mensuel) ** n) / ((1 + taux_mensuel) ** n - 1)
-            return float(mensualite.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+            return (capital * taux_mensuel).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+        if taux_mensuel == 0:
+            return (capital / n).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+        mensualite = capital * (taux_mensuel * (1 + taux_mensuel) ** n) / ((1 + taux_mensuel) ** n - 1)
+        return mensualite.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     @property
     def mensualite(self):
         """Mensualité totale avec assurance."""
-        return self.mensualite_hors_assurance + float(self.assurance_mensuelle)
+        return self.mensualite_hors_assurance + (self.assurance_mensuelle or Decimal('0'))
 
     @property
     def date_fin(self):
@@ -542,29 +608,33 @@ class CreditImmobilier(models.Model):
 
     def get_capital_restant_du_at(self, target_date):
         """Calcule le capital restant dû à une date donnée (Decimal pour la précision)."""
-        from decimal import Decimal, ROUND_HALF_UP
+        capital = Decimal(str(self.capital_emprunte))
+
         if target_date < self.date_debut:
-            return float(self.capital_emprunte)
+            return capital
         if target_date >= self.date_fin:
-            return 0
+            return Decimal('0.00')
+        if self.type_credit == 'IN_FINE':
+            return capital
 
         # Compter le nombre de mois écoulés
         from dateutil.relativedelta import relativedelta
         delta = relativedelta(target_date, self.date_debut)
         mois_ecoules = delta.years * 12 + delta.months
 
-        if self.type_credit == 'IN_FINE':
-            return float(self.capital_emprunte)
+        taux_mensuel = Decimal(str(self.taux_interet)) / 100 / 12
+        n = self.duree_mois
+
+        if taux_mensuel == 0:
+            crd = capital - (capital / n * mois_ecoules)
         else:
-            capital = Decimal(str(self.capital_emprunte))
-            taux_mensuel = Decimal(str(self.taux_interet)) / 100 / 12
-            if taux_mensuel == 0:
-                crd = capital - (capital / self.duree_mois * mois_ecoules)
-                return float(max(Decimal('0'), crd.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)))
-            n = self.duree_mois
             mensualite = capital * (taux_mensuel * (1 + taux_mensuel) ** n) / ((1 + taux_mensuel) ** n - 1)
-            crd = capital * ((1 + taux_mensuel) ** mois_ecoules) - mensualite * (((1 + taux_mensuel) ** mois_ecoules - 1) / taux_mensuel)
-            return float(max(Decimal('0'), crd.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)))
+            crd = (
+                capital * ((1 + taux_mensuel) ** mois_ecoules)
+                - mensualite * (((1 + taux_mensuel) ** mois_ecoules - 1) / taux_mensuel)
+            )
+
+        return max(Decimal('0'), crd.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
     class Meta:
         verbose_name = "Crédit immobilier"
@@ -647,8 +717,11 @@ class Amortissement(models.Model):
     @property
     def dotation_annuelle(self):
         """Dotation annuelle aux amortissements."""
-        from decimal import Decimal, ROUND_HALF_UP
-        return float((Decimal(str(self.valeur_origine)) / self.duree_amortissement).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+        if not self.duree_amortissement:
+            return Decimal('0.00')
+        return (Decimal(str(self.valeur_origine)) / self.duree_amortissement).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
 
     @property
     def date_fin_amortissement(self):
@@ -658,11 +731,10 @@ class Amortissement(models.Model):
 
     def get_valeur_nette_comptable(self, target_date):
         """Valeur nette comptable à une date donnée."""
-        from decimal import Decimal, ROUND_HALF_UP
         if target_date < self.date_mise_service:
-            return float(self.valeur_origine)
+            return Decimal(str(self.valeur_origine))
         if target_date >= self.date_fin_amortissement:
-            return 0
+            return Decimal('0.00')
 
         from dateutil.relativedelta import relativedelta
         delta = relativedelta(target_date, self.date_mise_service)
@@ -671,7 +743,7 @@ class Amortissement(models.Model):
         dotation_mensuelle = Decimal(str(self.valeur_origine)) / (self.duree_amortissement * 12)
         amortissement_cumule = dotation_mensuelle * mois_ecoules
         vnc = Decimal(str(self.valeur_origine)) - amortissement_cumule
-        return float(max(Decimal('0'), vnc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)))
+        return max(Decimal('0'), vnc.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
     def __str__(self):
         return f"{self.libelle} - {self.valeur_origine}€ sur {self.duree_amortissement} ans"
@@ -702,6 +774,36 @@ class VacanceLocative(models.Model):
         from django.utils import timezone
         fin = self.date_fin or timezone.now().date()
         return (fin - self.date_debut).days
+
+    def clean(self):
+        """Deux vacances du même local ne peuvent pas se chevaucher."""
+        if self.date_fin and self.date_debut and self.date_fin < self.date_debut:
+            raise ValidationError({
+                'date_fin': "La fin de vacance doit suivre son début."
+            })
+
+        if not self.local_id or not self.date_debut:
+            return
+
+        tres_lointain = date(9999, 12, 31)
+        ma_fin = self.date_fin or tres_lointain
+
+        chevauchements = VacanceLocative.objects.filter(
+            local_id=self.local_id, date_debut__lte=ma_fin,
+        ).filter(
+            models.Q(date_fin__gte=self.date_debut) | models.Q(date_fin__isnull=True)
+        )
+        if self.pk:
+            chevauchements = chevauchements.exclude(pk=self.pk)
+
+        conflit = chevauchements.first()
+        if conflit:
+            raise ValidationError({
+                'date_debut': (
+                    f"Chevauchement avec la vacance du "
+                    f"{conflit.date_debut.strftime('%d/%m/%Y')}."
+                )
+            })
 
     def __str__(self):
         fin_str = self.date_fin.strftime('%d/%m/%Y') if self.date_fin else 'en cours'

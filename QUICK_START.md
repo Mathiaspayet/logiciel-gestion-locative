@@ -33,11 +33,16 @@
 # 1. Cloner/Télécharger le projet
 cd "D:\...\logiciel gestion locative"
 
-# 2. Lancer l'installation (créé venv + installe dépendances)
-1_INSTALLATION.bat
+# 2. Créer l'environnement virtuel et installer les dépendances
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
 
 # 3. Lancer le serveur
-3_LANCER_LOGICIEL.bat
+cd gestion_locative
+set DJANGO_DEBUG=True
+python manage.py migrate
+python manage.py runserver
 
 # 4. Accéder à l'interface
 http://127.0.0.1:8000/app/    # Interface custom

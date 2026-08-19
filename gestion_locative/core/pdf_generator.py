@@ -8,8 +8,11 @@ from reportlab.lib import colors
 from datetime import date, datetime
 import calendar
 import logging
+from decimal import Decimal, ROUND_HALF_UP
 
 logger = logging.getLogger(__name__)
+
+CENTIME = Decimal('0.01')
 
 
 def format_euro(montant):
@@ -256,11 +259,13 @@ class PDFGenerator:
 
             # TVA si applicable
             if self.bail.soumis_tva:
-                montant_tva = (float(tarif.loyer_hc) + float(tarif.charges)) * float(self.bail.taux_tva) / 100
+                montant_tva = (
+                    (tarif.loyer_hc + tarif.charges) * self.bail.taux_tva / 100
+                ).quantize(CENTIME, rounding=ROUND_HALF_UP)
                 draw_line(f"TVA ({self.bail.taux_tva}%)", montant_tva)
-                total = float(tarif.loyer_hc) + float(tarif.charges) + float(tarif.taxes) + montant_tva
+                total = tarif.loyer_hc + tarif.charges + tarif.taxes + montant_tva
             else:
-                total = float(tarif.loyer_hc) + float(tarif.charges) + float(tarif.taxes)
+                total = tarif.loyer_hc + tarif.charges + tarif.taxes
 
             # Ligne de séparation
             y -= 0.3*cm
@@ -375,11 +380,13 @@ class PDFGenerator:
                 draw_line("Taxes et contributions", tarif.taxes)
 
             if self.bail.soumis_tva:
-                montant_tva = (float(tarif.loyer_hc) + float(tarif.charges)) * float(self.bail.taux_tva) / 100
+                montant_tva = (
+                    (tarif.loyer_hc + tarif.charges) * self.bail.taux_tva / 100
+                ).quantize(CENTIME, rounding=ROUND_HALF_UP)
                 draw_line(f"TVA ({self.bail.taux_tva}%)", montant_tva)
-                total = float(tarif.loyer_hc) + float(tarif.charges) + float(tarif.taxes) + montant_tva
+                total = tarif.loyer_hc + tarif.charges + tarif.taxes + montant_tva
             else:
-                total = float(tarif.loyer_hc) + float(tarif.charges) + float(tarif.taxes)
+                total = tarif.loyer_hc + tarif.charges + tarif.taxes
 
             y -= 0.3*cm
             self.p.line(3*cm, y, 18*cm, y)
@@ -460,7 +467,10 @@ class PDFGenerator:
         if debut_occup <= fin_occup:
             nb_jours_presence = (fin_occup - debut_occup).days + 1
 
-        ratio_temps = nb_jours_presence / nb_jours_periode if nb_jours_periode > 0 else 0
+        ratio_temps = (
+            Decimal(nb_jours_presence) / Decimal(nb_jours_periode)
+            if nb_jours_periode > 0 else Decimal('0')
+        )
 
         # Liste des détails calculs pour annexe
         details_calculs = []
@@ -495,7 +505,7 @@ class PDFGenerator:
             .values_list('cle_id', 'total')
         )
 
-        total_part_locataire = 0
+        total_part_locataire = Decimal('0')
 
         # Créer PDF en mémoire
         buffer = BytesIO()
@@ -553,20 +563,24 @@ class PDFGenerator:
                         if start_final <= end_final:
                             nb_jours_facturables = (end_final - start_final).days + 1
 
-                        part_reelle = float(part_theorique) * (nb_jours_facturables / duree_depense)
+                        part_reelle = (
+                            part_theorique * Decimal(nb_jours_facturables) / Decimal(duree_depense)
+                        ).quantize(CENTIME, rounding=ROUND_HALF_UP)
 
                         details_calculs.append(f"[Dépense] {depense.libelle} ({format_euro(depense.montant)})")
                         details_calculs.append(f"  > Période facture : {depense.date_debut} au {depense.date_fin} ({duree_depense} jours)")
                         details_calculs.append(f"  > Intersection présence : {nb_jours_facturables} jours")
-                        details_calculs.append(f"  > Calcul : {float(part_theorique):.2f}€ x ({nb_jours_facturables}/{duree_depense}) = {part_reelle:.2f}€")
+                        details_calculs.append(f"  > Calcul : {part_theorique:.2f}€ x ({nb_jours_facturables}/{duree_depense}) = {part_reelle:.2f}€")
                     else:
                         if not (date_debut <= depense.date <= date_fin):
                             continue
-                        part_reelle = float(part_theorique) * ratio_temps
+                        part_reelle = (part_theorique * ratio_temps).quantize(
+                            CENTIME, rounding=ROUND_HALF_UP
+                        )
 
                         details_calculs.append(f"[Dépense] {depense.libelle} ({format_euro(depense.montant)})")
                         details_calculs.append(f"  > Sans période (Date: {depense.date}) -> Lissage global")
-                        details_calculs.append(f"  > Calcul : {float(part_theorique):.2f}€ x Ratio {ratio_temps:.4f} = {part_reelle:.2f}€")
+                        details_calculs.append(f"  > Calcul : {part_theorique:.2f}€ x Ratio {ratio_temps:.4f} = {part_reelle:.2f}€")
 
                     total_part_locataire += part_reelle
 
@@ -596,48 +610,62 @@ class PDFGenerator:
 
         for conso in consommations:
             cle = conso.cle_repartition
-            if cle.prix_unitaire:
-                quantite_reelle = float(conso.quantite)
+            if not cle.prix_unitaire:
+                # Sans prix unitaire, la consommation ne peut pas être valorisée :
+                # on le dit explicitement au lieu de l'omettre en silence.
+                avertissement = (
+                    f"[Conso] {cle.nom} : releve de {conso.quantite} NON FACTURE "
+                    f"(aucun prix unitaire defini sur la cle de repartition)."
+                )
+                details_calculs.append(avertissement)
+                logger.warning("%s - %s", self.bail, avertissement)
+                continue
 
-                if conso.date_debut:
-                    duree_conso = (conso.date_releve - conso.date_debut).days + 1
-                    if duree_conso <= 0:
-                        duree_conso = 1
+            quantite_reelle = Decimal(conso.quantite)
 
-                    start_inter = max(conso.date_debut, date_debut)
-                    end_inter = min(conso.date_releve, date_fin)
+            if conso.date_debut:
+                duree_conso = (conso.date_releve - conso.date_debut).days + 1
+                if duree_conso <= 0:
+                    duree_conso = 1
 
-                    nb_jours_conso = 0
-                    if start_inter <= end_inter:
-                        nb_jours_conso = (end_inter - start_inter).days + 1
+                start_inter = max(conso.date_debut, date_debut)
+                end_inter = min(conso.date_releve, date_fin)
 
-                    quantite_reelle = quantite_reelle * (nb_jours_conso / duree_conso)
+                nb_jours_conso = 0
+                if start_inter <= end_inter:
+                    nb_jours_conso = (end_inter - start_inter).days + 1
 
-                    details_calculs.append(f"[Conso] {cle.nom} (Relevé: {conso.quantite})")
-                    details_calculs.append(f"  > Période relevé : {conso.date_debut} au {conso.date_releve} ({duree_conso} jours)")
-                    details_calculs.append(f"  > Intersection régul : {nb_jours_conso} jours")
-                    details_calculs.append(f"  > Qté retenue : {float(conso.quantite):.2f} x ({nb_jours_conso}/{duree_conso}) = {quantite_reelle:.2f}")
-                else:
-                    details_calculs.append(f"[Conso] {cle.nom} (Relevé: {conso.quantite}) - 100% retenu")
+                quantite_reelle = (
+                    quantite_reelle * Decimal(nb_jours_conso) / Decimal(duree_conso)
+                )
 
-                montant_conso = quantite_reelle * float(cle.prix_unitaire)
-                total_part_locataire += montant_conso
+                details_calculs.append(f"[Conso] {cle.nom} (Relevé: {conso.quantite})")
+                details_calculs.append(f"  > Période relevé : {conso.date_debut} au {conso.date_releve} ({duree_conso} jours)")
+                details_calculs.append(f"  > Intersection régul : {nb_jours_conso} jours")
+                details_calculs.append(f"  > Qté retenue : {conso.quantite:.2f} x ({nb_jours_conso}/{duree_conso}) = {quantite_reelle:.2f}")
+            else:
+                details_calculs.append(f"[Conso] {cle.nom} (Relevé: {conso.quantite}) - 100% retenu")
 
-                y = self._check_and_new_page(y)
+            montant_conso = (quantite_reelle * cle.prix_unitaire).quantize(
+                CENTIME, rounding=ROUND_HALF_UP
+            )
+            total_part_locataire += montant_conso
 
-                libelle_conso = f"{cle.nom} (Relevé: {conso.quantite})"
-                if conso.date_debut:
-                    libelle_conso += f" [Prorata: {quantite_reelle:.2f}]"
+            y = self._check_and_new_page(y)
 
-                self.p.drawString(2*cm, y, libelle_conso[:75])
-                self.p.drawString(12*cm, y, f"PU: {format_euro(cle.prix_unitaire)}")
-                self.p.drawString(16*cm, y, format_euro(montant_conso))
-                y -= 0.6*cm
+            libelle_conso = f"{cle.nom} (Relevé: {conso.quantite})"
+            if conso.date_debut:
+                libelle_conso += f" [Prorata: {quantite_reelle:.2f}]"
+
+            self.p.drawString(2*cm, y, libelle_conso[:75])
+            self.p.drawString(12*cm, y, f"PU: {format_euro(cle.prix_unitaire)}")
+            self.p.drawString(16*cm, y, format_euro(montant_conso))
+            y -= 0.6*cm
 
         # AJUSTEMENTS
         ajustements = Ajustement.objects.filter(bail=self.bail, date__range=[date_debut, date_fin])
         for ajustement in ajustements:
-            total_part_locataire += float(ajustement.montant)
+            total_part_locataire += ajustement.montant
 
             y = self._check_and_new_page(y)
 
@@ -670,15 +698,23 @@ class PDFGenerator:
 
         # HISTORISATION
         if enregistrer_historique:
-            Regularisation.objects.create(
+            # Rejouer le meme decompte met a jour la ligne existante au lieu
+            # d'empiler un doublon dans l'historique du bail.
+            regularisation, cree = Regularisation.objects.update_or_create(
                 bail=self.bail,
                 date_debut=date_debut,
                 date_fin=date_fin,
-                montant_reel=total_part_locataire,
-                montant_provisions=total_provisions,
-                solde=solde
+                defaults={
+                    'montant_reel': total_part_locataire,
+                    'montant_provisions': total_provisions,
+                    'solde': solde,
+                },
             )
-            logger.info(f"Régularisation enregistrée en base : solde={solde}")
+            regularisation.full_clean(exclude=['bail'])
+            logger.info(
+                "Régularisation %s en base : solde=%s",
+                "créée" if cree else "mise à jour", solde,
+            )
 
         # PAGE ANNEXE (DÉTAILS CALCULS)
         self.p.showPage()
@@ -748,8 +784,10 @@ class PDFGenerator:
         nb_jours_periode = (fin_periode - debut_periode).days + 1
         nb_jours_presence = (date_sortie - debut_periode).days + 1
 
-        montant_periode = float(tarif_sortie.loyer_hc)
-        loyer_prorata = montant_periode * (nb_jours_presence / nb_jours_periode)
+        montant_periode = tarif_sortie.loyer_hc
+        loyer_prorata = (
+            montant_periode * Decimal(nb_jours_presence) / Decimal(nb_jours_periode)
+        ).quantize(CENTIME, rounding=ROUND_HALF_UP)
 
         # Impact financier du loyer
         if statut_loyer == "NON_PAYE":
@@ -761,8 +799,8 @@ class PDFGenerator:
             lbl_loyer = f"Remboursement trop-perçu loyer (Sortie le {date_sortie.strftime('%d/%m')})"
 
         # C. Calcul Final
-        depot = float(self.bail.depot_garantie)
-        solde_final = depot + impact_loyer - montant_retenues
+        depot = self.bail.depot_garantie
+        solde_final = depot + impact_loyer - Decimal(str(montant_retenues or 0))
 
         # GÉNÉRATION PDF
         buffer = BytesIO()
@@ -843,13 +881,15 @@ class PDFGenerator:
         if ancien_indice is None:
             tarif_actuel = self.bail.tarification_actuelle
             if tarif_actuel and tarif_actuel.indice_reference:
-                ancien_indice = float(tarif_actuel.indice_reference)
+                ancien_indice = tarif_actuel.indice_reference
             else:
                 raise ValueError("Impossible de calculer la révision : aucun indice de référence dans le bail")
 
         # Calcul du nouveau loyer
-        ancien_loyer = float(self.bail.loyer_hc)
-        nouveau_loyer = ancien_loyer * (nouvel_indice / ancien_indice)
+        ancien_loyer = self.bail.loyer_hc
+        nouveau_loyer = (
+            ancien_loyer * Decimal(str(nouvel_indice)) / Decimal(str(ancien_indice))
+        ).quantize(CENTIME, rounding=ROUND_HALF_UP)
 
         # Récupérer l'ancien trimestre
         tarif_actuel = self.bail.tarification_actuelle

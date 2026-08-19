@@ -224,11 +224,13 @@
     </div>
 </div>
 
+{{ immeubles_data_json|json_script:"immeubles-data" }}
+{{ projection_data_json|json_script:"projection-data" }}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Données injectées depuis Django
-    const immeubles = {{ immeubles_json|safe }};
-    const projectionData = {{ projection_json|safe }};
+    const immeubles = JSON.parse(document.getElementById('immeubles-data').textContent);
+    const projectionData = JSON.parse(document.getElementById('projection-data').textContent);
 
     // Palette de couleurs
     const colors = [

@@ -121,10 +121,12 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{{ immeubles_data_json|json_script:"immeubles-data" }}
+{{ projection_data_json|json_script:"projection-data" }}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const immeubles = {{ immeubles_json|safe }};
-    const projectionData = {{ projection_json|safe }};
+    const immeubles = JSON.parse(document.getElementById('immeubles-data').textContent);
+    const projectionData = JSON.parse(document.getElementById('projection-data').textContent);
     const colors = ['#3b82f6', '#10b981', '#06b6d4', '#f59e0b', '#ef4444', '#8b5cf6', '#6b7280'];
 
     // Repartition (doughnut)

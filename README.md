@@ -4,11 +4,38 @@ Une application professionnelle et complète pour gérer vos biens immobiliers, 
 
 ## 🚀 Installation Rapide
 
-1.  **Installation :** Double-cliquez sur `1_INSTALLATION.bat` (une seule fois).
-2.  **Mise à jour :** Si vous modifiez le code, lancez `2_MISE_A_JOUR.bat`.
-3.  **Lancement :** Double-cliquez sur `3_LANCER_LOGICIEL.bat`.
+### En production (Synology NAS)
 
-L'interface s'ouvrira automatiquement dans votre navigateur à l'adresse : `http://127.0.0.1:8000/app/` (nouvelle interface) ou `http://127.0.0.1:8000/admin/` (admin Django legacy).
+Voir `GUIDE_INSTALLATION_NAS.md` : l'image Docker est construite par GitHub Actions
+et déployée automatiquement par Watchtower.
+
+### En développement local
+
+```bash
+python3 -m venv venv
+source venv/bin/activate          # Windows : venv\Scripts\activate
+pip install -r requirements.txt
+
+cd gestion_locative
+DJANGO_DEBUG=True python manage.py migrate
+DJANGO_DEBUG=True python manage.py createsuperuser
+DJANGO_DEBUG=True python manage.py runserver
+```
+
+L'interface est alors accessible sur `http://127.0.0.1:8000/app/` (nouvelle interface)
+ou `http://127.0.0.1:8000/admin/` (admin Django legacy).
+
+En production, définissez `DJANGO_SECRET_KEY` dans le `.env` : sans elle,
+l'application démarre avec la clé de repli du dépôt, qui est publique — les
+sessions signées avec cette clé sont forgeables. Un avertissement est écrit dans
+les logs du conteneur tant que la variable est absente.
+
+### Tests
+
+```bash
+cd gestion_locative
+DJANGO_DEBUG=True python manage.py test core
+```
 
 ## ✨ Fonctionnalités Principales
 
